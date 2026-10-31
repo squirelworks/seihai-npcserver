@@ -10,14 +10,42 @@ Part of the Seihai server stack:
 [seihai-gserver-v2](https://github.com/squirelworks/seihai-gserver-v2) (GPL fork of GServer-v2, ships first) ·
 client: [seihai](https://github.com/squirelworks/seihai).
 
-**Status: scaffold.** Nothing works yet. The plan is in [docs/PLAN.md](docs/PLAN.md),
-the rules every contributor and coding agent follows are in [AGENTS.md](AGENTS.md).
+**Status: milestone 1.** It connects to the gserver over the NPC-server link,
+authenticates, and logs the level list and player props it is sent. It runs no
+scripts yet. The link is specified in [PROTOCOL.md](PROTOCOL.md), the plan is in
+[docs/PLAN.md](docs/PLAN.md), and the rules every contributor and coding agent
+follows are in [AGENTS.md](AGENTS.md).
+
+## Run
+
+Most people never start it by hand: with `npcserver = auto` in its config,
+`seihai-gserver` starts it and passes it a fresh token (see
+[PROTOCOL.md](PROTOCOL.md#starting-the-npc-server-from-the-gserver-npcserver--auto)).
+To run it yourself:
+
+```
+seihai-npcserver --gserver 127.0.0.1:14810 --token-file npcserver-token.txt --world path/to/world
+```
+
+The token file holds the same token as `npcserver_token` in the gserver's
+config. The token is never taken on the command line.
+
+## Try it without a gserver
+
+Until `seihai-gserver` has its side of the link, a stand-in gserver ships as an
+example. It listens on `127.0.0.1` only:
+
+```
+export SEIHAI_NPCSERVER_TOKEN=lab-token-0123456789
+cargo run --example mock_gserver &
+cargo run -- --once
+```
 
 ## Build
 
 ```
 cargo build --release
-cargo test
+cargo test        # includes loopback tests against the stand-in gserver
 ```
 
 Releases for Linux, Windows and macOS are built by GitHub Actions on each `v*` tag.
