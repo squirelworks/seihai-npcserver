@@ -1,11 +1,22 @@
 //! seihai-npcserver: a Graal NPC-server, a separate program that logs into
 //! seihai-gserver and runs server-side NPC scripts.
 //!
-//! Milestone 1: the gserver link ([`link`], specified in `PROTOCOL.md`) and a
-//! session that authenticates, keeps the level list and player props, and
-//! logs them ([`session`]). [`mock`] is a small stand-in gserver for tests
-//! and loopback lab runs until `seihai-gserver` has its side of the link.
+//! Module map (details in `docs/ARCHITECTURE.md`):
+//!
+//! - [`link`]: the wire format of the gserver link (`PROTOCOL.md`). No
+//!   sockets, so the gserver can share it.
+//! - [`session`]: one link session: connect, authenticate, the 0.1 s tick
+//!   loop.
+//! - [`world`]: levels and players as the gserver described them.
+//! - [`npcdb`]: server-side NPC files in the world's `npcs/` folder
+//!   (milestone 2).
+//! - [`scripts`]: runs those NPCs with `seihai-core`'s GS1 engine
+//!   (milestone 2).
+//! - [`mock`]: a stand-in gserver for tests and loopback lab runs.
 
 pub mod link;
 pub mod mock;
+pub mod npcdb;
+pub mod scripts;
 pub mod session;
+pub mod world;

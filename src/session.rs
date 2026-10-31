@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use seihai_core::protocol::parse_player_props;
 
 use crate::link::{self, show, Message, LINK_VERSION};
+pub use crate::world::{Player, World};
 
 /// Timings. The defaults are the ones in `PROTOCOL.md`; tests shorten them.
 #[derive(Debug, Clone, Copy)]
@@ -33,23 +34,6 @@ impl Default for Timing {
             dead_after: Duration::from_secs(90),
         }
     }
-}
-
-/// What the NPC-server knows about one player.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Player {
-    pub account: Vec<u8>,
-    pub level: Vec<u8>,
-    /// Latest raw value of each prop id.
-    pub props: BTreeMap<u8, Vec<u8>>,
-}
-
-/// The gserver's world as the link has described it so far.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct World {
-    pub server_name: Vec<u8>,
-    pub levels: Vec<Vec<u8>>,
-    pub players: BTreeMap<u16, Player>,
 }
 
 /// How a session ended.

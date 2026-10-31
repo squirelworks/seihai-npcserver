@@ -12,7 +12,8 @@ client: [seihai](https://github.com/squirelworks/seihai).
 
 **Status: milestone 1.** It connects to the gserver over the NPC-server link,
 authenticates, and logs the level list and player props it is sent. It runs no
-scripts yet. The link is specified in [PROTOCOL.md](PROTOCOL.md), the plan is in
+scripts yet. The link is specified in [PROTOCOL.md](PROTOCOL.md), the module map and next
+steps are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the plan is in
 [docs/PLAN.md](docs/PLAN.md), and the rules every contributor and coding agent
 follows are in [AGENTS.md](AGENTS.md).
 
