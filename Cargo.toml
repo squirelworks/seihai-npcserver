@@ -1,0 +1,12 @@
+[package]
+name = "seihai-npcserver"
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "A Graal NPC-server: a separate program that logs into seihai-gserver and runs server-side NPC scripts."
+repository = "https://github.com/squirelworks/seihai-npcserver"
+publish = false
+
+[dependencies]
+# Protocol, framing, version profiles and scripting shared with the Seihai client.
+seihai-core = { git = "https://github.com/squirelworks/seihai", tag = "v0.0.3", default-features = false }
