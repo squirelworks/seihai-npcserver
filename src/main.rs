@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use seihai_npcserver::link::{DEFAULT_ADDR, TOKEN_ENV};
+use seihai_npcserver::npcdb;
 use seihai_npcserver::session::{self, End, Timing};
 
 const USAGE: &str = "\
@@ -15,7 +16,7 @@ usage: seihai-npcserver [--gserver HOST:PORT] [--token-file FILE] [--world DIR] 
   --token-file FILE    read the link token from FILE; otherwise it comes from
                        the SEIHAI_NPCSERVER_TOKEN environment variable, which
                        is how seihai-gserver passes it with `npcserver = auto`
-  --world DIR          the world folder (used from milestone 2)
+  --world DIR          the world folder; server-side NPCs are read from DIR/npcs
   --once               exit when the link closes instead of reconnecting
   --version            print the version
 
@@ -102,6 +103,21 @@ fn main() -> ExitCode {
     ));
     if let Some(w) = &args.world {
         log(format!("world folder {}", w.display()));
+        // TODO(milestone 2): load after the level list arrives (the 2001
+        // order), hand the NPCs to `scripts::Scripts`, and run its tick from
+        // the session loop. For now this only checks the files.
+        match npcdb::load(w) {
+            Ok((npcs, problems)) => {
+                log(format!("NPC database: {} server-side NPCs", npcs.len()));
+                for p in problems {
+                    log(format!("  skipped {p}"));
+                }
+            }
+            Err(e) => log(format!(
+                "NPC database: cannot read {}: {e}",
+                w.join("npcs").display()
+            )),
+        }
     }
     let mut delay = Duration::from_secs(1);
     loop {

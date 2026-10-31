@@ -138,6 +138,31 @@ props until the first id it does not know and keeps what it has, as clients do.
 Planned: NPC props, player props changed by scripts, PM replies, weapon grants
 (`addweapon`, `toweapons`), warps (`setlevel2`), `server.` flag changes.
 
+#### Draft: milestone 2 (not final, do not send yet)
+
+A starting point for milestone 2. Change it freely until it is implemented on
+both sides; then move it into the tables above and drop "draft".
+
+| Id | Name | Direction | Fields |
+|---|---|---|---|
+| `0x40` | `NPC_ADDED` | NPC → GS | `npc_id: u32`, `level: str`, `props: blob` |
+| `0x41` | `NPC_PROPS` | NPC → GS | `npc_id: u32`, `props: blob`, only what changed |
+| `0x42` | `NPC_DELETED` | NPC → GS | `npc_id: u32` |
+| `0x43` | `SET_PLAYER_PROPS` | NPC → GS | `player_id: u16`, `props: blob` |
+| `0x44` | `WARP_PLAYER` | NPC → GS | `player_id: u16`, `level: str`, `x: u16`, `y: u16` (half tiles) |
+| `0x45` | `ADD_WEAPON` | NPC → GS | `player_id: u16`, `weapon: str` |
+| `0x46` | `SERVER_FLAG` | NPC → GS | `name: str`, `set: u8` (1 set, 0 unset), `value: str` |
+| `0x47` | `PM` | NPC → GS | `player_id: u16`, `text: str` |
+| `0x24` | `PM_TO_NPC` | GS → NPC | `player_id: u16`, `text: str` |
+| `0x25` | `SERVER_FLAGS` | GS → NPC | `count: u16`, then `count` × `name=value: str`; the whole set, sent after `LEVEL_LIST` |
+| `0x26` | `TRIGGER_ACTION` | GS → NPC | `player_id: u16`, `level: str`, `x: u16`, `y: u16`, `action: str` |
+
+`npc_id` is the NPC-server's id for a server-side NPC, unique while the link is
+up. NPC prop streams use the same encoding the gserver sends a 2.22 client in
+`PLO_NPCPROPS` after the NPC id. The gserver relays `NPC_ADDED`/`NPC_PROPS` to
+the players in that level and answers `SET_PLAYER_PROPS` with the usual
+`PLAYER_PROPS` once it has applied them.
+
 ### 0x80 to 0xFF: NPC Control (*reserved*)
 
 Planned: the NPC list, classes and weapons for `seihai-rc`, relayed by the

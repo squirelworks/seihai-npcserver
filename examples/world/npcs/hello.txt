@@ -1,0 +1,13 @@
+LEVEL onlinestartlocal.nw
+X 30
+Y 30
+IMAGE block.png
+SCRIPT
+if (created) {
+  message hello from the NPC-server;
+  timeout = 1;
+}
+if (timeout) {
+  timeout = 1;
+}
+SCRIPTEND

@@ -37,6 +37,8 @@ configure the link. Running it on another machine is the advanced option.
    **Done** (link version 1 in `PROTOCOL.md`; lab run in
    `docs/lab/2026-10-31-milestone1.md`). The gserver side comes with
    `seihai-gserver` stage 5.
-2. Run a GS1 NPC with `if (created)`, `timeout`, `setcharprop`, `say2`, `setlevel2`.
+2. **Started:** NPC files (`src/npcdb.rs`) and the script host
+   (`src/scripts.rs`) run `created` and `timeout`. Next steps are in
+   `docs/ARCHITECTURE.md`, "Milestone 2 plan". Run a GS1 NPC with `if (created)`, `timeout`, `setcharprop`, `say2`, `setlevel2`.
 3. A sample world whose NPCs only work when the NPC-server runs; lab test with
    real 2.05 to 2.31 and Seihai.
