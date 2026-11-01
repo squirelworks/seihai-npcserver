@@ -30,9 +30,17 @@ Work in this order, one branch and pull request each. The design is in
       `if (created) { timeout = 0.1; } if (timeout) { setcharprop #c,hi; timeout = 1; }`
       makes `NPC_PROPS` arrive at the mock.
 
+- [x] **Chat, weapons, PMs, flags, triggers.** `say2` is `PM`. `toweapons`
+      and `addweapon` are `ADD_WEAPON`. `showcharacter` is the character
+      NPC props. `PM_TO_NPC` runs as `playerchats` on the sender's level,
+      `SERVER_FLAGS` replaces the flag set, and `TRIGGER_ACTION` fires
+      `action<name>`. `#n(id)` expands from `World.players` when that id
+      is online. Still unsupported, logged once, because this link has no
+      message for them: `say`, `play`, `playlooped`, `play2`, `stopsound`,
+      `stopmidi`, `setshape`, a script's own `triggeraction`,
+      `sendrpgmessage`, `sendtoserver`, other commands, and player
+      variables that are not a GCHAR prop (`playerrupees` and the rest).
+
 Milestone 3 is next (`docs/PLAN.md`): a sample world whose NPCs only work
 when the NPC-server is running, lab-tested with real clients once
-`seihai-gserver` has its side of the link. `PM_TO_NPC`, `SERVER_FLAGS` and
-`TRIGGER_ACTION` are decoded here and not run yet. `say2`, `toweapons` and
-`addweapon` are logged once and not sent (`ADD_WEAPON` and `PM` have link
-messages, and no effect in the table produces them).
+`seihai-gserver` has its side of the link.

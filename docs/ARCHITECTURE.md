@@ -25,8 +25,8 @@ the gserver to change players.
 | `session` | done (m2) | Connect, `HELLO`, wait for `WELCOME`, then the tick loop: read, run scripts, send their messages, keep-alive. Reader thread + `mpsc`, no async runtime. |
 | `world` | done (m2) | Levels and players as the gserver described them. Raw prop bytes per prop id. Nick, position, direction, hearts and chat are decoded for the player view. |
 | `npcdb` | started (m2) | Reads `<world>/npcs/*.txt` (format below). |
-| `scripts` | done (m2) | One `seihai_core::scripting::engine::world::ScriptWorld` per level. `created`, `timeout`, `playerenters` and `playerleaves` run. |
-| `effects` | done (m2) | Maps `Effect` values onto link messages. Anything else is logged once. |
+| `scripts` | done (m2) | One `seihai_core::scripting::engine::world::ScriptWorld` per level. `created`, `timeout`, `playerenters`, `playerleaves`, `playerchats` (from `PM_TO_NPC`) and `action*` (from `TRIGGER_ACTION`) run. |
+| `effects` | done (m2) | Maps `Effect` values onto link messages. Anything without a message is logged once. |
 | `mock` | done (m2) | Stand-in gserver for tests and `examples/mock_gserver.rs`. Binds to 127.0.0.1 only. Records `NPC_PROPS` and the other NPC-to-gserver messages. |
 | `main` | done (m1) | Arguments, token, logging, reconnect with backoff, `--once`. |
 
@@ -62,7 +62,11 @@ Every 0.1 s (the smallest useful `timeout`):
    | `SetLevel` (`setlevel2`) | `WARP_PLAYER` |
    | `SetFlag`, `UnsetFlag` on `server.` names | `SERVER_FLAG` |
    | `Message` | `NPC_PROPS` chat prop (`message` shows over the NPC) |
-   | anything else | log once, skip |
+   | `Say2` | `PM` to the triggering player |
+   | `Command` `toweapons` or `addweapon` | `ADD_WEAPON` for that player. `addweapon` is not a command in `seihai-core` v0.0.3, so the statement is read from the engine's unknown-command log line |
+   | `Command` `showcharacter` | `NPC_PROPS`: image `#c#`, gani `idle` |
+   | `SetPlayerVar` `playerx`, `playery`, `playerdir`, `playerhearts` | `SET_PLAYER_PROPS` (props 15, 16, 17, 2, the GCHAR forms this server already reads) |
+   | `say`, `play`, `playlooped`, `play2`, `stopsound`, `stopmidi`, `setshape`, `triggeraction`, `sendrpgmessage`, `sendtoserver`, other commands, other player variables, flags that are not `server.` | log once, unsupported. No link message for them |
 
 4. **Done.** Before `playerenters` / `playerleaves`, the level's `PlayerView`
    is filled from `world::Player` (nick, account, position, direction, hearts,
@@ -70,9 +74,10 @@ Every 0.1 s (the smallest useful `timeout`):
    with NPCs, and `playerleaves` on the way out. The engine has one player view
    per `ScriptWorld`; a server-side event runs for one player at a time.
    Bare `#n` is that player's nickname; `seihai-core` expands it from
-   `PlayerView.nick`. `#n(id)` is not implemented. The engine does not expand
-   it, and this server has no id-to-nickname table to add one against
-   (`World.players` is the player list, not that lookup).
+   `PlayerView.nick`. `#n(id)` is expanded from `World.players`: the id is
+   the player's link id, and the nickname is prop 0. An id that is not
+   online stays written as `#n(id)`. The engine does not expand that form;
+   this server does, on the text it sends.
 5. **Done.** The mock records the new messages. Loopback test: an NPC with
    `if (created) { timeout = 0.1; } if (timeout) { setcharprop #c,hi; timeout = 1; }`
    makes `NPC_PROPS` arrive at the mock.

@@ -6,17 +6,17 @@
 //!
 //! Bare `#n` is the acting player's nickname: `seihai-core` expands it from
 //! [`PlayerView::nick`], which [`Scripts::on_player`] fills before
-//! `playerenters` and `playerleaves`. `#n(id)` is left as written. The engine
-//! does not expand it, and this server has no separate id-to-nickname table
-//! to consult (players are stored by id on [`crate::world::World`], which is
-//! not a nickname lookup).
+//! `playerenters` and `playerleaves`. `#n(id)` is expanded here from the
+//! id-to-nickname table [`Scripts::set_nicks`] builds out of
+//! [`crate::world::World::players`]. An id that is not online stays written
+//! as `#n(id)`. The engine itself does not expand that form.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use seihai_core::protocol::latin1;
-use seihai_core::scripting::engine::world::{ObjSpec, PlayerView, ScriptWorld};
-use seihai_core::scripting::engine::{Effect, Era};
+use seihai_core::scripting::engine::world::{ObjKind, ObjSpec, PlayerView, ScriptWorld};
+use seihai_core::scripting::engine::{Effect, Era, Val};
 
 use crate::effects::{self, Ctx, Outbound};
 use crate::link::{show, Message};
@@ -51,6 +51,12 @@ pub struct Scripts {
     started: bool,
     announced: bool,
     outbound: Outbound,
+    /// Latest whole `server.` flag set. Applied to every level world.
+    server_flags: BTreeMap<String, String>,
+    /// Script log lines taken while collecting effects, still to be logged.
+    pending_logs: Vec<(Vec<u8>, String)>,
+    /// Inbound notes already logged (`PM` on a level with no NPCs, and so on).
+    noted: BTreeSet<String>,
 }
 
 impl Scripts {
@@ -67,6 +73,9 @@ impl Scripts {
             started: false,
             announced: false,
             outbound: Outbound::default(),
+            server_flags: BTreeMap::new(),
+            pending_logs: Vec::new(),
+            noted: BTreeSet::new(),
         }
     }
 
@@ -113,6 +122,30 @@ impl Scripts {
             world
                 .add(ObjSpec::npc(&npc.image, npc.x, npc.y, &npc.script).with_tag(npc.id as usize));
         }
+        self.apply_server_flags();
+    }
+
+    /// Online player id to nickname. `#n(id)` in script text uses this.
+    pub fn set_nicks(&mut self, nicks: BTreeMap<u16, String>) {
+        self.outbound.set_nicks(nicks);
+    }
+
+    /// Replace the `server.` flag set on every level. `entries` is the whole
+    /// set from `SERVER_FLAGS` (`name` to value).
+    pub fn set_server_flags(&mut self, flags: BTreeMap<String, String>) {
+        self.server_flags = flags;
+        self.apply_server_flags();
+    }
+
+    fn apply_server_flags(&mut self) {
+        for w in self.levels.values_mut() {
+            w.core.server_vars.clear();
+            for (name, value) in &self.server_flags {
+                w.core
+                    .server_vars
+                    .insert(name.clone(), Val::Str(value.clone()));
+            }
+        }
     }
 
     /// Run `created` on every NPC that has not run yet.
@@ -154,14 +187,122 @@ impl Scripts {
         self.collect(&level, Some(player_id))
     }
 
+    /// A PM from `player` to the NPC-server. The link names the sender and
+    /// the text, not an NPC, so every NPC on that player's level gets
+    /// `playerchats` with `#c` set to the text. The engine has no PM event.
+    pub fn on_pm(&mut self, player_id: u16, player: &Player, text: &str) -> Produced {
+        let level = player.level.clone();
+        if !self.levels.contains_key(&level) {
+            let mut produced = Produced::default();
+            self.note_once(
+                "pm-no-npcs",
+                &format!("PM_TO_NPC on {} has no server NPCs, not run", show(&level)),
+                &mut produced,
+            );
+            return produced;
+        }
+        {
+            let w = self.levels.get_mut(&level).unwrap();
+            w.core.player = view_of(player);
+            w.core.level = latin1(&level);
+            w.chat(text);
+        }
+        self.collect(&level, Some(player_id))
+    }
+
+    /// `TRIGGER_ACTION`. `x` and `y` are tiles. Fires `action<name>` on each
+    /// NPC whose touch rectangle holds that point, the same hit test the
+    /// engine uses for a script's own `triggeraction`.
+    pub fn on_trigger(
+        &mut self,
+        player_id: u16,
+        player: Option<&Player>,
+        level: &[u8],
+        x: f64,
+        y: f64,
+        action: &str,
+    ) -> Produced {
+        let action = action.trim().to_ascii_lowercase();
+        if action.is_empty() {
+            let mut produced = Produced::default();
+            self.note_once(
+                "trigger-empty",
+                "TRIGGER_ACTION has an empty action, not run",
+                &mut produced,
+            );
+            return produced;
+        }
+        if !self.levels.contains_key(level) {
+            let mut produced = Produced::default();
+            self.note_once(
+                "trigger-no-npcs",
+                &format!(
+                    "TRIGGER_ACTION on {} has no server NPCs, not run",
+                    show(level)
+                ),
+                &mut produced,
+            );
+            return produced;
+        }
+        {
+            let w = self.levels.get_mut(level).unwrap();
+            if let Some(player) = player {
+                w.core.player = view_of(player);
+                w.core.level = latin1(level);
+            }
+        }
+        let event = format!("action{action}");
+        let hits: Vec<usize> = {
+            let w = self.levels.get(level).unwrap();
+            w.ids()
+                .into_iter()
+                .filter(|&id| {
+                    w.obj(id).is_some_and(|o| {
+                        if o.kind != ObjKind::Npc || o.destroyed {
+                            return false;
+                        }
+                        let (ox, oy, wdt, h) = o.rect();
+                        x >= ox && x < ox + wdt && y >= oy && y < oy + h
+                    })
+                })
+                .collect()
+        };
+        if hits.is_empty() {
+            let mut produced = Produced::default();
+            self.note_once(
+                "trigger-miss",
+                &format!(
+                    "TRIGGER_ACTION {event} at {x},{y} on {} hit no NPC",
+                    show(level)
+                ),
+                &mut produced,
+            );
+            return produced;
+        }
+        {
+            let w = self.levels.get_mut(level).unwrap();
+            for id in hits {
+                w.fire(id, &event, &[]);
+            }
+        }
+        self.collect(level, Some(player_id))
+    }
+
     /// Script log lines (parse problems, unknown calls) since the last call,
-    /// by level.
+    /// by level. Lines consumed while turning `addweapon` into `ADD_WEAPON`
+    /// are not returned.
     pub fn take_log(&mut self) -> Vec<(Vec<u8>, String)> {
-        let mut out = Vec::new();
+        let mut out = std::mem::take(&mut self.pending_logs);
         for (level, w) in self.levels.iter_mut() {
             out.extend(w.take_log().into_iter().map(|l| (level.clone(), l)));
         }
         out
+    }
+
+    fn note_once(&mut self, key: &str, line: &str, produced: &mut Produced) {
+        if self.noted.insert(key.to_string()) {
+            produced.notes.push(line.to_string());
+        }
     }
 
     /// Levels that have server-side NPCs.
@@ -243,7 +384,59 @@ impl Scripts {
             }
             produced.messages.extend(mapped.messages);
         }
+        // `addweapon` is not a command in seihai-core, so the engine logs it
+        // as an unknown command and keeps the argument text. That text is
+        // the weapon name `ADD_WEAPON` carries.
+        let logs = self
+            .levels
+            .get_mut(level)
+            .map(|w| w.take_log())
+            .unwrap_or_default();
+        for line in logs {
+            if let Some(weapon) = unknown_addweapon(&line) {
+                let mapped = self.outbound.map(
+                    &Effect::Command {
+                        obj: 0,
+                        name: "addweapon".into(),
+                        args: vec![Val::from(weapon)],
+                    },
+                    &Ctx {
+                        npc: None,
+                        npc_xy: None,
+                        player,
+                        hearts,
+                        player_xy: Some(player_xy),
+                    },
+                );
+                for note in mapped.notes {
+                    produced
+                        .notes
+                        .push(format!("script {}: {note}", show(level)));
+                }
+                produced.messages.extend(mapped.messages);
+            } else {
+                self.pending_logs.push((level.to_vec(), line));
+            }
+        }
         produced
+    }
+}
+
+/// `object N: line L: `addweapon Name` ignored (unknown command)`.
+fn unknown_addweapon(line: &str) -> Option<String> {
+    let marker = "`addweapon ";
+    let start = line.find(marker)? + marker.len();
+    let rest = line.get(start..)?;
+    let end = rest.find('`')?;
+    let tail = rest.get(end + 1..)?;
+    if !tail.contains("ignored (unknown command)") {
+        return None;
+    }
+    let name = rest[..end].split(',').next().unwrap_or("").trim();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
     }
 }
 
@@ -303,6 +496,8 @@ fn obj_of(e: &Effect) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use seihai_core::protocol::npcprops::parse_npc_props;
 
@@ -398,9 +593,10 @@ mod tests {
     }
 
     #[test]
-    fn hash_n_with_an_id_is_left_as_written() {
+    fn hash_n_with_an_id_expands_when_that_player_is_online() {
         let mut s = Scripts::new(Era::V21);
-        s.load(&[npc("if (playerenters) { message #n(2); }")]);
+        s.set_nicks(BTreeMap::from([(2, "test205".into())]));
+        s.load(&[npc("if (playerenters) { message #n(2) #n(9); }")]);
         let _ = s.start();
         let player = Player {
             account: b"acct".to_vec(),
@@ -413,6 +609,114 @@ mod tests {
             .iter()
             .find_map(message_of)
             .unwrap_or_default();
-        assert_eq!(text, "#n(2)", "{:?}", produced.messages);
+        assert_eq!(text, "test205 #n(9)", "{:?}", produced.messages);
+    }
+
+    #[test]
+    fn say2_toweapons_showcharacter_and_addweapon_are_sent() {
+        let mut s = Scripts::new(Era::V21);
+        s.set_nicks(BTreeMap::from([(2, "test205".into())]));
+        s.load(&[npc(
+            "if (playerenters) { say2 Hello #n(2); toweapons Bow; showcharacter; play jump.wav; addweapon Sword; }",
+        )]);
+        let _ = s.start();
+        let player = Player {
+            account: b"acct".to_vec(),
+            level: b"onlinestartlocal.nw".to_vec(),
+            ..Player::default()
+        };
+        let produced = s.on_player(2, &player, "playerenters");
+        assert!(
+            produced.messages.iter().any(|m| matches!(
+                m,
+                Message::Pm { player_id: 2, text } if text == b"Hello test205"
+            )),
+            "{:?}",
+            produced.messages
+        );
+        assert!(
+            produced.messages.iter().any(|m| matches!(
+                m,
+                Message::AddWeapon { player_id: 2, weapon } if weapon == b"Bow"
+            )),
+            "{:?}",
+            produced.messages
+        );
+        assert!(
+            produced.messages.iter().any(|m| matches!(
+                m,
+                Message::AddWeapon { player_id: 2, weapon } if weapon == b"Sword"
+            )),
+            "{:?}",
+            produced.messages
+        );
+        assert!(
+            produced
+                .messages
+                .iter()
+                .any(|m| { message_image_gani(m) == Some(("#c#".into(), "idle".into())) }),
+            "{:?}",
+            produced.messages
+        );
+        assert!(
+            produced
+                .notes
+                .iter()
+                .any(|n| n.contains("play") && n.contains("unsupported")),
+            "{:?}",
+            produced.notes
+        );
+        let again = s.on_player(2, &player, "playerenters");
+        assert!(
+            again.notes.iter().all(|n| !n.contains("play")),
+            "play should be logged once: {:?}",
+            again.notes
+        );
+    }
+
+    #[test]
+    fn pm_flags_and_trigger_run() {
+        let mut s = Scripts::new(Era::V21);
+        s.load(&[npc(
+            "if (playerchats) { message #c/#v(server.door); }\nif (actionopen) { message triggered; }",
+        )]);
+        let mut flags = BTreeMap::new();
+        flags.insert("server.door".into(), "1".into());
+        s.set_server_flags(flags);
+        let _ = s.start();
+        let player = Player {
+            account: b"acct".to_vec(),
+            level: b"onlinestartlocal.nw".to_vec(),
+            ..Player::default()
+        };
+        let pm = s.on_pm(2, &player, "hi npc");
+        let text = pm.messages.iter().find_map(message_of).unwrap_or_default();
+        assert_eq!(text, "hi npc/1", "{:?}", pm.messages);
+
+        let hit = s.on_trigger(2, Some(&player), b"onlinestartlocal.nw", 30.0, 30.0, "open");
+        let text = hit.messages.iter().find_map(message_of).unwrap_or_default();
+        assert_eq!(text, "triggered", "{:?}", hit.messages);
+
+        let miss = s.on_trigger(2, Some(&player), b"onlinestartlocal.nw", 1.0, 1.0, "open");
+        assert!(miss.messages.is_empty(), "{:?}", miss.messages);
+        assert!(
+            miss.notes.iter().any(|n| n.contains("hit no NPC")),
+            "{:?}",
+            miss.notes
+        );
+    }
+
+    fn message_image_gani(m: &Message) -> Option<(String, String)> {
+        let Message::NpcProps { npc_id, props } = m else {
+            return None;
+        };
+        let mut raw = vec![
+            ((*npc_id >> 14) & 0x7F) as u8 + 0x20,
+            ((*npc_id >> 7) & 0x7F) as u8 + 0x20,
+            (*npc_id & 0x7F) as u8 + 0x20,
+        ];
+        raw.extend_from_slice(props);
+        let (_, p) = parse_npc_props(&raw, false)?;
+        Some((p.image?, p.gani?))
     }
 }

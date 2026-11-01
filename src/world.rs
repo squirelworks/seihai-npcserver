@@ -71,6 +71,25 @@ pub struct World {
     pub server_name: Vec<u8>,
     pub levels: Vec<Vec<u8>>,
     pub players: BTreeMap<u16, Player>,
+    /// The whole `server.` flag set from the latest `SERVER_FLAGS`.
+    /// Names are lower case, as scripts read them.
+    pub server_flags: BTreeMap<String, String>,
+}
+
+/// `SERVER_FLAGS` entries are `name=value`. The name is lower-cased. A
+/// missing `=` stores an empty value.
+pub fn parse_server_flags(entries: &[Vec<u8>]) -> BTreeMap<String, String> {
+    let mut flags = BTreeMap::new();
+    for entry in entries {
+        let text = seihai_core::protocol::latin1(entry);
+        let (name, value) = text.split_once('=').unwrap_or((text.as_str(), ""));
+        let name = name.trim().to_ascii_lowercase();
+        if name.is_empty() {
+            continue;
+        }
+        flags.insert(name, value.to_string());
+    }
+    flags
 }
 
 impl World {
@@ -145,5 +164,18 @@ mod tests {
         );
         let ids: Vec<u16> = w.players_in(b"a.nw").map(|(id, _)| id).collect();
         assert_eq!(ids, vec![1]);
+    }
+
+    #[test]
+    fn server_flag_entries_are_the_whole_set() {
+        let flags = parse_server_flags(&[
+            b"server.door=1".to_vec(),
+            b"Server.Note=hello".to_vec(),
+            b"bare".to_vec(),
+        ]);
+        assert_eq!(flags["server.door"], "1");
+        assert_eq!(flags["server.note"], "hello");
+        assert_eq!(flags["bare"], "");
+        assert_eq!(flags.len(), 3);
     }
 }
