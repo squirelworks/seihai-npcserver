@@ -21,12 +21,13 @@ the gserver to change players.
 
 | Module | State | Job |
 |---|---|---|
-| `link` | done (m1) | Frames and messages. No sockets, so `seihai-gserver` can depend on this crate (by git tag) and share the codec. |
-| `session` | done (m1) | Connect, `HELLO`, wait for `WELCOME`, then the tick loop: read, (run scripts), keep-alive, send. Reader thread + `mpsc`, no async runtime. |
-| `world` | done (m1) | Levels and players as the gserver described them. Raw prop bytes per prop id. |
+| `link` | done (m2) | Frames and messages, including the NPC-to-gserver rows. No sockets, so `seihai-gserver` can depend on this crate (by git tag) and share the codec. |
+| `session` | done (m2) | Connect, `HELLO`, wait for `WELCOME`, then the tick loop: read, run scripts, send their messages, keep-alive. Reader thread + `mpsc`, no async runtime. |
+| `world` | done (m2) | Levels and players as the gserver described them. Raw prop bytes per prop id. Nick, position, direction, hearts and chat are decoded for the player view. |
 | `npcdb` | started (m2) | Reads `<world>/npcs/*.txt` (format below). |
-| `scripts` | started (m2) | One `seihai_core::scripting::engine::world::ScriptWorld` per level; `created` and `timeout` work and produce `Effect`s. |
-| `mock` | done (m1) | Stand-in gserver for tests and `examples/mock_gserver.rs`. Binds to 127.0.0.1 only. |
+| `scripts` | done (m2) | One `seihai_core::scripting::engine::world::ScriptWorld` per level. `created`, `timeout`, `playerenters` and `playerleaves` run. |
+| `effects` | done (m2) | Maps `Effect` values onto link messages. Anything else is logged once. |
+| `mock` | done (m2) | Stand-in gserver for tests and `examples/mock_gserver.rs`. Binds to 127.0.0.1 only. Records `NPC_PROPS` and the other NPC-to-gserver messages. |
 | `main` | done (m1) | Arguments, token, logging, reconnect with backoff, `--once`. |
 
 ## The tick (session loop)
@@ -36,8 +37,8 @@ Every 0.1 s (the smallest useful `timeout`):
 1. Drain frames from the reader thread; apply each message to `World`
    (`session::handle`).
 2. `Scripts::tick` once per loop, by the configured tick (100 ms by
-   default). Script log lines are printed. Effects are drained and not
-   sent; turning them into the link messages below is the next step.
+   default). Script log lines are printed. Effects are mapped to link
+   messages (`src/effects.rs`) and written in step 4.
 3. Keep-alive: `PING` after 30 s of not sending, close after 90 s of silence.
 4. Write everything produced this tick as one frame.
 
@@ -47,12 +48,11 @@ Every 0.1 s (the smallest useful `timeout`):
    `LEVEL_LIST` it reads `<world>/npcs` (the 2001 order), calls
    `Scripts::start`, then `Scripts::tick` each tick, and logs script lines.
    A fresh host is used on each connection, so `created` runs again after
-   a reconnect. Effects are not sent yet.
-2. **Link messages NPC → GS.** Specify the draft messages in `PROTOCOL.md`
-   ("Draft: milestone 2") in both repos, bump nothing (link version 1 stays,
-   since the ids were reserved), implement encode/decode in `link` with
-   round-trip tests.
-3. **Effects to link messages.** In a new `effects` module:
+   a reconnect.
+2. **Done.** The milestone 2 messages are specified in `PROTOCOL.md` (link
+   version 1 stays; the ids were reserved) and encoded in `link`, with
+   round-trip tests. The copy in `seihai-gserver` is still the draft.
+3. **Done.** `src/effects.rs`:
 
    | `Effect` | Link message |
    |---|---|
@@ -64,16 +64,16 @@ Every 0.1 s (the smallest useful `timeout`):
    | `Message` | `NPC_PROPS` chat prop (`message` shows over the NPC) |
    | anything else | log once, skip |
 
-4. **Player view.** Before a player-triggered event, fill the world's
-   `PlayerView` from `world::Player` (nick, account, position from props; add
-   decoders as needed). Fire `playerenters` on `PLAYER_LEVEL` / `PLAYER_JOINED`
-   into a level with NPCs, and `playerleaves` on the way out. The engine has
-   one player view per `ScriptWorld`; a server-side event runs for one player at
-   a time, which is what the 2001 NPC-server did. Bare `#n` in a value is that
-   player's nickname; `seihai-core` already expands it from `PlayerView.nick`.
-   Do not add `#n(id)`. The engine does not expand it, and this server must
-   not invent a lookup for it.
-5. **Mock gserver** learns the new messages; loopback test: an NPC with
+4. **Done.** Before `playerenters` / `playerleaves`, the level's `PlayerView`
+   is filled from `world::Player` (nick, account, position, direction, hearts,
+   chat). `playerenters` fires on `PLAYER_LEVEL` / `PLAYER_JOINED` into a level
+   with NPCs, and `playerleaves` on the way out. The engine has one player view
+   per `ScriptWorld`; a server-side event runs for one player at a time.
+   Bare `#n` is that player's nickname; `seihai-core` expands it from
+   `PlayerView.nick`. `#n(id)` is not implemented. The engine does not expand
+   it, and this server has no id-to-nickname table to add one against
+   (`World.players` is the player list, not that lookup).
+5. **Done.** The mock records the new messages. Loopback test: an NPC with
    `if (created) { timeout = 0.1; } if (timeout) { setcharprop #c,hi; timeout = 1; }`
    makes `NPC_PROPS` arrive at the mock.
 

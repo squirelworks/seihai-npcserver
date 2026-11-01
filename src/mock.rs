@@ -1,7 +1,8 @@
 //! A stand-in gserver for tests and loopback lab runs.
 //!
 //! It speaks the gserver side of `PROTOCOL.md` with canned world state. It is
-//! not the real gserver and only ever binds to `127.0.0.1`.
+//! not the real gserver and only ever binds to `127.0.0.1`. Frames the
+//! NPC-server sends back, including `NPC_PROPS`, are kept on [`Seen`].
 
 use std::io;
 use std::net::{TcpListener, TcpStream};

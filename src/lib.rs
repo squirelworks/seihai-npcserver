@@ -10,10 +10,11 @@
 //! - [`world`]: levels and players as the gserver described them.
 //! - [`npcdb`]: server-side NPC files in the world's `npcs/` folder
 //!   (milestone 2).
-//! - [`scripts`]: runs those NPCs with `seihai-core`'s GS1 engine
-//!   (milestone 2).
+//! - [`scripts`]: runs those NPCs with `seihai-core`'s GS1 engine.
+//! - [`effects`]: turns script effects into link messages.
 //! - [`mock`]: a stand-in gserver for tests and loopback lab runs.
 
+pub mod effects;
 pub mod link;
 pub mod mock;
 pub mod npcdb;

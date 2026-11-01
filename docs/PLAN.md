@@ -37,10 +37,9 @@ configure the link. Running it on another machine is the advanced option.
    **Done** (link version 1 in `PROTOCOL.md`; lab run in
    `docs/lab/2026-10-31-milestone1.md`). The gserver side comes with
    `seihai-gserver` stage 5.
-2. **Started:** NPC files (`src/npcdb.rs`) and the script host
-   (`src/scripts.rs`) run `created` and `timeout`, and the session loads
-   them after `LEVEL_LIST` and ticks them (`docs/NEXT.md`). Still to do:
-   link messages back to the gserver, so `setcharprop`, `say2` and
-   `setlevel2` can leave this process.
+2. **In review:** NPC files, the script host, and link messages back to
+   the gserver. `setcharprop`, `setlevel2`, `message`, moves, `hurt` and
+   `server.` flags are sent. `say2` is still only logged (no link message
+   in the effects table). See `docs/NEXT.md`.
 3. A sample world whose NPCs only work when the NPC-server runs; lab test with
    real 2.05 to 2.31 and Seihai.

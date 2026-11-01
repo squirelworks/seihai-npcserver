@@ -1,5 +1,6 @@
 //! seihai-npcserver: connects to a seihai-gserver over the NPC-server link
-//! (`PROTOCOL.md`) and, for now, logs what the gserver tells it.
+//! (`PROTOCOL.md`), runs server-side NPC scripts, and sends the changes
+//! they ask for back over the link.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
