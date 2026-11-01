@@ -2,13 +2,14 @@
 //!
 //! One [`ScriptWorld`] from `seihai-core` per level that has server-side
 //! NPCs. The tick loop in [`crate::session`] calls [`Scripts::tick`] once per
-//! 0.1 s tick and turns the returned [`Effect`]s into link messages for the
-//! gserver (see `docs/ARCHITECTURE.md`, "Effects to link messages").
+//! tick and collects [`Effect`]s. Sending those to the gserver is still to
+//! do (`docs/ARCHITECTURE.md`, "Effects to link messages").
 //!
-//! What works now: loading NPCs, `created`, `timeout` and collecting effects.
-//! What is still TODO is marked `TODO(milestone 2)` below.
+//! What works now: loading NPCs after `LEVEL_LIST`, `created`, `timeout`,
+//! and logging script lines.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use seihai_core::scripting::engine::world::{ObjSpec, ScriptWorld};
 use seihai_core::scripting::engine::{Effect, Era};
@@ -28,6 +29,11 @@ pub struct LevelEffect {
 /// Server-side scripts for every level.
 pub struct Scripts {
     era: Era,
+    /// `<world>` folder. When set, [`Self::open_database`] reads `<world>/npcs`.
+    world_dir: Option<PathBuf>,
+    /// [`Self::open_database`] has run, or [`Self::load`] was called directly.
+    database_opened: bool,
+    npc_count: usize,
     levels: BTreeMap<Vec<u8>, ScriptWorld>,
     started: bool,
 }
@@ -38,14 +44,45 @@ impl Scripts {
     pub fn new(era: Era) -> Self {
         Self {
             era,
+            world_dir: None,
+            database_opened: false,
+            npc_count: 0,
             levels: BTreeMap::new(),
             started: false,
         }
     }
 
+    /// A host that reads `<world>/npcs` the first time [`Self::open_database`]
+    /// runs. The session calls that after `LEVEL_LIST`, which is when the
+    /// 2001 NPC-server loaded its database.
+    pub fn with_world(era: Era, world: impl AsRef<Path>) -> Self {
+        let mut s = Self::new(era);
+        s.world_dir = Some(world.as_ref().to_path_buf());
+        s
+    }
+
+    /// Read the NPC folder once. A second call returns the same count and
+    /// no new problems. With no world folder this is a no-op, so a host
+    /// filled through [`Self::load`] is left as it is.
+    pub fn open_database(&mut self) -> std::io::Result<(usize, Vec<String>)> {
+        if self.database_opened {
+            return Ok((self.npc_count, Vec::new()));
+        }
+        let Some(dir) = self.world_dir.clone() else {
+            self.database_opened = true;
+            return Ok((self.npc_count, Vec::new()));
+        };
+        let (npcs, problems) = crate::npcdb::load(&dir)?;
+        let n = npcs.len();
+        self.load(&npcs);
+        Ok((n, problems))
+    }
+
     /// Add NPCs from the database. Call before [`Self::start`]; NPCs added
     /// later get `created` on the next [`Self::start`].
     pub fn load(&mut self, npcs: &[NpcDef]) {
+        self.database_opened = true;
+        self.npc_count += npcs.len();
         for npc in npcs {
             let era = self.era;
             let world = self.levels.entry(npc.level.clone()).or_insert_with(|| {

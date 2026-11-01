@@ -27,7 +27,7 @@ fn run_against(
     let addr = listener.local_addr().unwrap().to_string();
     let server = thread::spawn(move || mock::serve_one(&listener, &script).unwrap());
     let mut lines = Vec::new();
-    let (end, world) = session::run(&addr, token, timing, &mut |l| lines.push(l));
+    let (end, world) = session::run(&addr, token, timing, None, &mut |l| lines.push(l));
     (end, world, lines, server.join().unwrap())
 }
 
@@ -135,7 +135,7 @@ fn sends_ping_when_idle_and_closes_when_dead() {
         dead_after: Duration::from_millis(400),
     };
     let mut lines = Vec::new();
-    let (end, _) = session::run(&addr, TOKEN, timing, &mut |l| lines.push(l));
+    let (end, _) = session::run(&addr, TOKEN, timing, None, &mut |l| lines.push(l));
     let (msgs, closed) = server.join().unwrap();
     assert!(matches!(msgs[0], Message::Ping { .. }), "{msgs:?}");
     assert!(
@@ -175,10 +175,149 @@ fn unknown_messages_are_skipped() {
 }
 
 #[test]
+fn scripts_start_after_the_level_list() {
+    let dir = std::env::temp_dir().join(format!("seihai-npcserver-scripts-{}", std::process::id()));
+    let npcs = dir.join("npcs");
+    std::fs::create_dir_all(&npcs).unwrap();
+    std::fs::write(
+        npcs.join("a.txt"),
+        "\
+LEVEL onlinestartlocal.nw
+X 30
+Y 30
+IMAGE block.png
+SCRIPT
+if (created) {
+  madeupthing();
+  timeout = 0.05;
+}
+if (timeout) {
+  timeouthook();
+}
+SCRIPTEND
+",
+    )
+    .unwrap();
+    std::fs::write(
+        npcs.join("b.txt"),
+        "\
+LEVEL not-on-server.nw
+X 1
+Y 1
+IMAGE a.png
+SCRIPT
+if (created) { otherhook(); }
+SCRIPTEND
+",
+    )
+    .unwrap();
+    // One bad file is reported and skipped; it must not stop the others.
+    std::fs::write(npcs.join("c.txt"), "COLOR red\n").unwrap();
+
+    let listener = mock::bind(0).unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    let server = thread::spawn(move || mock::serve_one(&listener, &Script::lab(TOKEN)).unwrap());
+    let mut lines = Vec::new();
+    let mut scripts = seihai_npcserver::scripts::Scripts::with_world(
+        seihai_core::scripting::engine::Era::V21,
+        &dir,
+    );
+    let timing = Timing {
+        // 0.05 s is one engine tick (50 ms), so the first loop tick runs timeout.
+        tick: Duration::from_millis(50),
+        handshake: Duration::from_secs(5),
+        ping_after: Duration::from_secs(30),
+        dead_after: Duration::from_secs(30),
+    };
+    let (end, _) = session::run(&addr, TOKEN, timing, Some(&mut scripts), &mut |l| {
+        lines.push(l)
+    });
+    let _ = server.join().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        end,
+        End::Closed("bye: lab script done".into()),
+        "{lines:#?}"
+    );
+
+    let text = lines.join("\n");
+    let list_at = text.find("level list: 2 levels").expect(&text);
+    let db_at = text.find("NPC database: 2 server-side NPCs").expect(&text);
+    assert!(
+        list_at < db_at,
+        "database must load after the level list:\n{text}"
+    );
+    assert!(
+        text.contains("skipped") && text.contains("unknown key"),
+        "{text}"
+    );
+    assert!(
+        text.contains("NPC level not-on-server.nw is not in the gserver level list"),
+        "{text}"
+    );
+    let created = text
+        .find("script onlinestartlocal.nw: object 0: call to unknown function `madeupthing`")
+        .expect(&text);
+    let timed = text
+        .find("script onlinestartlocal.nw: object 0: call to unknown function `timeouthook`")
+        .expect(&text);
+    assert!(created < timed, "timeout runs on a later tick:\n{text}");
+    assert!(
+        text.contains("script not-on-server.nw: object 0: call to unknown function `otherhook`"),
+        "{text}"
+    );
+    // Effects are not link messages yet. The mock must still see only HELLO and PONGs.
+    // (Checked by the session ending on the lab script's BYE, same as the other tests.)
+}
+
+#[test]
+fn scripts_do_not_load_when_rejected() {
+    let dir =
+        std::env::temp_dir().join(format!("seihai-npcserver-rejected-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("npcs")).unwrap();
+    std::fs::write(
+        dir.join("npcs/a.txt"),
+        "LEVEL onlinestartlocal.nw\nX 1\nY 1\nIMAGE a.png\nSCRIPT\nif (created) { madeupthing(); }\nSCRIPTEND\n",
+    )
+    .unwrap();
+    let mut scripts = seihai_npcserver::scripts::Scripts::with_world(
+        seihai_core::scripting::engine::Era::V21,
+        &dir,
+    );
+    let (end, _, lines, _) = {
+        let listener = mock::bind(0).unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let server =
+            thread::spawn(move || mock::serve_one(&listener, &Script::lab(TOKEN)).unwrap());
+        let mut lines = Vec::new();
+        let (end, world) = session::run(
+            &addr,
+            b"wrong-token-0123456789",
+            fast(),
+            Some(&mut scripts),
+            &mut |l| lines.push(l),
+        );
+        (end, world, lines, server.join().unwrap())
+    };
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(end, End::Rejected("bad token".into()), "{lines:#?}");
+    let text = lines.join("\n");
+    assert!(!text.contains("NPC database"), "{text}");
+    assert!(!text.contains("madeupthing"), "{text}");
+    assert!(!scripts.is_started());
+}
+
+#[test]
 fn nobody_listening() {
     // Bind and drop to find a port nobody is on.
     let port = mock::bind(0).unwrap().local_addr().unwrap().port();
-    let (end, _) = session::run(&format!("127.0.0.1:{port}"), TOKEN, fast(), &mut |_| {});
+    let (end, _) = session::run(
+        &format!("127.0.0.1:{port}"),
+        TOKEN,
+        fast(),
+        None,
+        &mut |_| {},
+    );
     assert!(
         matches!(end, End::Closed(ref r) if r.starts_with("connect to")),
         "{end:?}"

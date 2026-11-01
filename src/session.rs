@@ -1,5 +1,5 @@
-//! One link session: connect, authenticate, then keep the gserver's world
-//! state and log it, on a 0.1 s tick (milestone 1).
+//! One link session: connect, authenticate, keep the gserver's world state,
+//! and (from milestone 2) run server-side NPC scripts on a 0.1 s tick.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use seihai_core::protocol::parse_player_props;
 
 use crate::link::{self, show, Message, LINK_VERSION};
+use crate::scripts::Scripts;
 pub use crate::world::{Player, World};
 
 /// Timings. The defaults are the ones in `PROTOCOL.md`; tests shorten them.
@@ -50,7 +51,17 @@ pub type Log<'a> = &'a mut dyn FnMut(String);
 
 /// Connect to `addr`, authenticate with `token`, then run until the link
 /// closes. Returns how it ended and the last known world.
-pub fn run(addr: &str, token: &[u8], timing: Timing, log: Log) -> (End, World) {
+///
+/// `scripts`, when set, is started on the first `LEVEL_LIST` (the NPC
+/// database is read then, if the host was built with [`Scripts::with_world`])
+/// and ticked once per loop. Pass `None` to only log what the gserver sends.
+pub fn run(
+    addr: &str,
+    token: &[u8],
+    timing: Timing,
+    scripts: Option<&mut Scripts>,
+    log: Log,
+) -> (End, World) {
     let mut world = World::default();
     let stream = match TcpStream::connect(addr) {
         Ok(s) => s,
@@ -58,7 +69,7 @@ pub fn run(addr: &str, token: &[u8], timing: Timing, log: Log) -> (End, World) {
     };
     let _ = stream.set_nodelay(true);
     log(format!("connected to {addr}"));
-    let end = match session(stream, token, timing, &mut world, log) {
+    let end = match session(stream, token, timing, &mut world, scripts, log) {
         Ok(end) => end,
         Err(e) => End::Closed(e.to_string()),
     };
@@ -70,6 +81,7 @@ fn session(
     token: &[u8],
     timing: Timing,
     world: &mut World,
+    mut scripts: Option<&mut Scripts>,
     log: Log,
 ) -> io::Result<End> {
     let program = format!("seihai-npcserver {}", env!("CARGO_PKG_VERSION"));
@@ -172,7 +184,14 @@ fn session(
                 Err(e) => return Ok(End::Closed(format!("link error: {e}"))),
             };
             for m in batch {
-                if let Some(end) = handle(m, world, &mut out, &mut seen_unknown, log) {
+                if let Some(end) = handle(
+                    m,
+                    world,
+                    &mut out,
+                    &mut seen_unknown,
+                    scripts.as_deref_mut(),
+                    log,
+                ) {
                     let _ = stream.shutdown(Shutdown::Both);
                     return Ok(end);
                 }
@@ -181,7 +200,14 @@ fn session(
                 break;
             }
         }
-        // 2. Scripts run here from milestone 2.
+        // 2. Advance scripts by one configured tick. Effects are drained so
+        // they do not pile up; nothing is sent until the NPC → gserver link
+        // messages exist (milestone 2, "Effects to link messages").
+        if let Some(s) = scripts.as_deref_mut().filter(|s| s.is_started()) {
+            let ms = u64::try_from(timing.tick.as_millis()).unwrap_or(u64::MAX);
+            let _effects = s.tick(ms);
+            log_script_lines(s, log);
+        }
         // 3. Keep-alive.
         if last_recv.elapsed() >= timing.dead_after {
             let _ = stream.shutdown(Shutdown::Both);
@@ -209,6 +235,7 @@ fn handle(
     world: &mut World,
     out: &mut Vec<Message>,
     seen_unknown: &mut [bool; 256],
+    scripts: Option<&mut Scripts>,
     log: Log,
 ) -> Option<End> {
     match m {
@@ -218,6 +245,11 @@ fn handle(
                 log(format!("  level {}", show(n)));
             }
             world.levels = names;
+            // Once per session. A later LEVEL_LIST replaces the names above
+            // but does not reload scripts; `created` has already run.
+            if let Some(s) = scripts.filter(|s| !s.is_started()) {
+                start_scripts(s, world, log);
+            }
         }
         Message::LevelReloaded { name } => log(format!("level reloaded: {}", show(&name))),
         Message::PlayerJoined {
@@ -285,6 +317,42 @@ fn handle(
         }
     }
     None
+}
+
+/// Load the NPC database (if this host has a world folder), run `created`,
+/// and log script lines. Called once, from the first `LEVEL_LIST`.
+fn start_scripts(scripts: &mut Scripts, world: &World, log: Log) {
+    let (count, problems) = match scripts.open_database() {
+        Ok(v) => v,
+        Err(e) => {
+            log(format!("NPC database: {e}"));
+            return;
+        }
+    };
+    log(format!("NPC database: {count} server-side NPCs"));
+    for p in problems {
+        log(format!("  skipped {p}"));
+    }
+    let missing: Vec<Vec<u8>> = scripts
+        .levels()
+        .filter(|level| !world.levels.iter().any(|name| name == *level))
+        .map(|level| (*level).to_vec())
+        .collect();
+    for level in missing {
+        log(format!(
+            "NPC level {} is not in the gserver level list",
+            show(&level)
+        ));
+    }
+    log_script_lines(scripts, log);
+    scripts.start();
+    log_script_lines(scripts, log);
+}
+
+fn log_script_lines(scripts: &mut Scripts, log: Log) {
+    for (level, line) in scripts.take_log() {
+        log(format!("script {}: {line}", show(&level)));
+    }
 }
 
 /// Store each prop; returns how many were read.

@@ -35,16 +35,19 @@ Every 0.1 s (the smallest useful `timeout`):
 
 1. Drain frames from the reader thread; apply each message to `World`
    (`session::handle`).
-2. **TODO(m2):** `Scripts::tick(100)`, then turn its effects into link
-   messages (table below).
+2. `Scripts::tick` once per loop, by the configured tick (100 ms by
+   default). Script log lines are printed. Effects are drained and not
+   sent; turning them into the link messages below is the next step.
 3. Keep-alive: `PING` after 30 s of not sending, close after 90 s of silence.
 4. Write everything produced this tick as one frame.
 
 ## Milestone 2 plan (one PR, in this order)
 
-1. **Wire scripts into the session.** Give `session::run` an optional
-   `Scripts`. Load the NPC database after `LEVEL_LIST` (the 2001 order), call
-   `Scripts::start`, then `Scripts::tick` each tick. Log script log lines.
+1. **Done.** `session::run` takes an optional `Scripts`. On the first
+   `LEVEL_LIST` it reads `<world>/npcs` (the 2001 order), calls
+   `Scripts::start`, then `Scripts::tick` each tick, and logs script lines.
+   A fresh host is used on each connection, so `created` runs again after
+   a reconnect. Effects are not sent yet.
 2. **Link messages NPC → GS.** Specify the draft messages in `PROTOCOL.md`
    ("Draft: milestone 2") in both repos, bump nothing (link version 1 stays,
    since the ids were reserved), implement encode/decode in `link` with
@@ -66,7 +69,10 @@ Every 0.1 s (the smallest useful `timeout`):
    decoders as needed). Fire `playerenters` on `PLAYER_LEVEL` / `PLAYER_JOINED`
    into a level with NPCs, and `playerleaves` on the way out. The engine has
    one player view per `ScriptWorld`; a server-side event runs for one player at
-   a time, which is what the 2001 NPC-server did.
+   a time, which is what the 2001 NPC-server did. Bare `#n` in a value is that
+   player's nickname; `seihai-core` already expands it from `PlayerView.nick`.
+   Do not add `#n(id)`. The engine does not expand it, and this server must
+   not invent a lookup for it.
 5. **Mock gserver** learns the new messages; loopback test: an NPC with
    `if (created) { timeout = 0.1; } if (timeout) { setcharprop #c,hi; timeout = 1; }`
    makes `NPC_PROPS` arrive at the mock.
