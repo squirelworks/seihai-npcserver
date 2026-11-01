@@ -25,6 +25,13 @@ NPC-server design (project file `npcserver-2001-notes.md`).
   weapons. `seihai-rc` should talk to it the same way, through the gserver or
   directly.
 
+## Out of scope: Graal3D (February 2000)
+
+No work. Neither the February 2000 client nor its `GServer.exe` has NPC
+scripting or an NPC-server link. Worlds there are `.x` meshes only. Seihai
+tracks hosting as **G3D-9** in `documentation/plannedmilestones.md`; this
+repo stays on the 2D / gen-5 gserver link.
+
 ## Easy setup
 
 The owner wants one-command setup. `seihai-gserver` starts the NPC-server for you
