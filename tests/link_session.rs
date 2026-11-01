@@ -416,6 +416,235 @@ SCRIPTEND
 }
 
 #[test]
+fn chat_weapons_pm_flags_and_trigger_round_trip() {
+    let dir = std::env::temp_dir().join(format!("seihai-npcserver-chat-{}", std::process::id()));
+    let npcs = dir.join("npcs");
+    std::fs::create_dir_all(&npcs).unwrap();
+    std::fs::write(
+        npcs.join("greet.txt"),
+        "\
+LEVEL onlinestartlocal.nw
+X 30
+Y 30
+IMAGE block.png
+SCRIPT
+if (playerenters) {
+  say2 Hello #n(2) #n(9);
+  toweapons Bow;
+  showcharacter;
+  play jump.wav;
+  stopsound jump.wav;
+  stopmidi;
+  say 1;
+  addweapon Sword;
+}
+if (playerchats) { message #c/#v(server.door); }
+if (actionopen) { message triggered; }
+SCRIPTEND
+",
+    )
+    .unwrap();
+
+    let listener = mock::bind(0).unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    let server = thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let hello = link::read_frame(&mut s).unwrap();
+        link::write_frame(
+            &mut s,
+            &[
+                Message::Welcome {
+                    link_version: 1,
+                    server_name: b"Lab Mock".to_vec(),
+                    program: b"test".to_vec(),
+                },
+                Message::LevelList {
+                    names: vec![b"onlinestartlocal.nw".to_vec()],
+                },
+                Message::PlayerJoined {
+                    player_id: 2,
+                    account: b"test205".to_vec(),
+                    level: b"onlinestartlocal.nw".to_vec(),
+                    props: mock::sample_props(b"test205", 30, 30),
+                },
+            ],
+        )
+        .unwrap();
+        let mut got = read_until(&mut s, Duration::from_millis(1500), |msgs| {
+            msgs.iter().any(|m| {
+                matches!(m, Message::Pm { player_id: 2, text } if text == b"Hello test205 #n(9)")
+            }) && msgs.iter().any(|m| {
+                matches!(m, Message::AddWeapon { weapon, .. } if weapon == b"Sword")
+            })
+        });
+        link::write_frame(
+            &mut s,
+            &[
+                Message::ServerFlags {
+                    entries: vec![b"server.door=1".to_vec()],
+                },
+                Message::PmToNpc {
+                    player_id: 2,
+                    text: b"hi npc".to_vec(),
+                },
+                Message::TriggerAction {
+                    player_id: 2,
+                    level: b"onlinestartlocal.nw".to_vec(),
+                    // Half tiles: the NPC stands at tile 30, 30.
+                    x: 60,
+                    y: 60,
+                    action: b"open".to_vec(),
+                },
+            ],
+        )
+        .unwrap();
+        got.extend(read_until(&mut s, Duration::from_millis(1500), |msgs| {
+            msgs.iter()
+                .any(|m| npc_message(m).as_deref() == Some("hi npc/1"))
+                && msgs
+                    .iter()
+                    .any(|m| npc_message(m).as_deref() == Some("triggered"))
+        }));
+        let _ = link::write_frame(
+            &mut s,
+            &[Message::Bye {
+                reason: b"chat seen".to_vec(),
+            }],
+        );
+        (hello, got)
+    });
+
+    let mut scripts = seihai_npcserver::scripts::Scripts::with_world(
+        seihai_core::scripting::engine::Era::V21,
+        &dir,
+    );
+    let timing = Timing {
+        tick: Duration::from_millis(50),
+        handshake: Duration::from_secs(5),
+        ping_after: Duration::from_secs(30),
+        dead_after: Duration::from_secs(30),
+    };
+    let mut lines = Vec::new();
+    let (end, world) = session::run(&addr, TOKEN, timing, Some(&mut scripts), &mut |l| {
+        lines.push(l)
+    });
+    let (hello, got) = server.join().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(matches!(hello[0], Message::Hello { .. }), "{hello:?}");
+    assert!(
+        matches!(end, End::Closed(ref r) if r.starts_with("bye:")),
+        "{end:?} {lines:#?}"
+    );
+
+    assert!(
+        got.iter().any(|m| matches!(
+            m,
+            Message::Pm { player_id: 2, text } if text == b"Hello test205 #n(9)"
+        )),
+        "PM missing in {got:?}\n{lines:#?}"
+    );
+    assert!(
+        got.iter().any(|m| matches!(
+            m,
+            Message::AddWeapon { player_id: 2, weapon } if weapon == b"Bow"
+        )),
+        "toweapons missing in {got:?}"
+    );
+    assert!(
+        got.iter().any(|m| matches!(
+            m,
+            Message::AddWeapon { player_id: 2, weapon } if weapon == b"Sword"
+        )),
+        "addweapon missing in {got:?}"
+    );
+    assert!(
+        got.iter()
+            .any(|m| npc_image_gani(m) == Some(("#c#".into(), "idle".into()))),
+        "showcharacter missing in {got:?}"
+    );
+    assert!(
+        got.iter()
+            .any(|m| npc_message(m).as_deref() == Some("hi npc/1")),
+        "PM was not delivered in {got:?}\n{lines:#?}"
+    );
+    assert!(
+        got.iter()
+            .any(|m| npc_message(m).as_deref() == Some("triggered")),
+        "triggeraction did not fire in {got:?}\n{lines:#?}"
+    );
+    assert_eq!(
+        world.server_flags.get("server.door").map(String::as_str),
+        Some("1")
+    );
+
+    let text = lines.join("\n");
+    for unsupported in ["play", "stopsound", "stopmidi", "say"] {
+        let hits = text
+            .matches(&format!("{unsupported} has no link message"))
+            .count();
+        assert_eq!(hits, 1, "{unsupported} should be logged once in:\n{text}");
+    }
+    assert!(text.contains("server flags: 1 entries"), "{text}");
+}
+
+fn read_until(
+    s: &mut std::net::TcpStream,
+    budget: Duration,
+    done: impl Fn(&[Message]) -> bool,
+) -> Vec<Message> {
+    s.set_read_timeout(Some(Duration::from_millis(100)))
+        .unwrap();
+    let deadline = std::time::Instant::now() + budget;
+    let mut got = Vec::new();
+    while std::time::Instant::now() < deadline {
+        match link::read_frame(s) {
+            Ok(m) => {
+                got.extend(m);
+                if done(&got) {
+                    break;
+                }
+            }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                continue;
+            }
+            Err(_) => break,
+        }
+    }
+    got
+}
+
+fn npc_message(m: &Message) -> Option<String> {
+    let Message::NpcProps { npc_id, props } = m else {
+        return None;
+    };
+    let mut raw = gint3(*npc_id);
+    raw.extend_from_slice(props);
+    seihai_core::protocol::npcprops::parse_npc_props(&raw, false).and_then(|(_, p)| p.message)
+}
+
+fn npc_image_gani(m: &Message) -> Option<(String, String)> {
+    let Message::NpcProps { npc_id, props } = m else {
+        return None;
+    };
+    let mut raw = gint3(*npc_id);
+    raw.extend_from_slice(props);
+    let (_, p) = seihai_core::protocol::npcprops::parse_npc_props(&raw, false)?;
+    Some((p.image?, p.gani?))
+}
+
+fn gint3(id: u32) -> Vec<u8> {
+    vec![
+        ((id >> 14) & 0x7F) as u8 + 0x20,
+        ((id >> 7) & 0x7F) as u8 + 0x20,
+        (id & 0x7F) as u8 + 0x20,
+    ]
+}
+
+#[test]
 fn nobody_listening() {
     // Bind and drop to find a port nobody is on.
     let port = mock::bind(0).unwrap().local_addr().unwrap().port();

@@ -124,7 +124,7 @@ Level names are file names relative to the world's `levels/` folder, with
 | `0x23` | `PLAYER_LEVEL` | `player_id: u16`, `level: str`. The player entered another level. |
 | `0x24` | `PM_TO_NPC` | `player_id: u16`, `text: str` |
 | `0x25` | `SERVER_FLAGS` | `count: u16`, then `count` × `name=value: str`. The whole set. |
-| `0x26` | `TRIGGER_ACTION` | `player_id: u16`, `level: str`, `x: u16`, `y: u16`, `action: str` |
+| `0x26` | `TRIGGER_ACTION` | `player_id: u16`, `level: str`, `x: u16`, `y: u16` (half tiles), `action: str` |
 | `0x27` to `0x2F` | *reserved* | Game time, level temporary state the NPC-server still does not read |
 
 `player_id` is the id the gserver gives the player's connection, the same one
@@ -142,8 +142,10 @@ props until the first id it does not know and keeps what it has, as clients do.
 These ids were reserved in link version 1. Specifying them does not bump the
 version. `seihai-npcserver` sends `NPC_ADDED` when it loads an NPC, and the
 other rows when a script effect maps onto them (`docs/ARCHITECTURE.md`).
-`ADD_WEAPON` and `PM` are decoded and not sent yet: no effect in that table
-produces them. `0x48` to `0x7F` stay reserved.
+`say2` is sent as `PM` to the player the event ran for. `toweapons` and
+`addweapon` are sent as `ADD_WEAPON`. `showcharacter` is `NPC_PROPS` with
+image `#c#` and gani `idle`. A script command with no message in this
+table is logged once and not sent. `0x48` to `0x7F` stay reserved.
 
 | Id | Name | Fields |
 |---|---|---|
@@ -162,8 +164,13 @@ up. NPC prop streams use the same encoding the gserver sends a 2.22 client in
 the players in that level and answers `SET_PLAYER_PROPS` with the usual
 `PLAYER_PROPS` once it has applied them.
 
-`PM_TO_NPC`, `SERVER_FLAGS` and `TRIGGER_ACTION` are gserver-to-NPC-server.
-This program decodes them and does not run them yet.
+`PM_TO_NPC` is delivered to the NPCs on the sender's level as
+`playerchats`, with `#c` set to the text (the script engine has no
+separate PM event, and the message does not name an NPC). `SERVER_FLAGS`
+replaces the server flag set scripts read as `server.` names.
+`TRIGGER_ACTION` fires `action<name>` on each NPC whose touch rectangle
+holds that point. `x` and `y` are half tiles, the same unit as
+`WARP_PLAYER`.
 
 ### 0x80 to 0xFF: NPC Control (*reserved*)
 

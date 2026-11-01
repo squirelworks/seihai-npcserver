@@ -202,6 +202,7 @@ fn session(
         }
         // 2. Advance scripts by one configured tick and send what they asked for.
         if let Some(s) = scripts.as_deref_mut().filter(|s| s.is_started()) {
+            s.set_nicks(nick_table(world));
             let ms = u64::try_from(timing.tick.as_millis()).unwrap_or(u64::MAX);
             let produced = s.tick(ms);
             log_produced(&produced, log);
@@ -272,7 +273,15 @@ fn handle(
             ));
             world.players.insert(player_id, p);
             if let Some(player) = world.players.get(&player_id).cloned() {
-                player_event(&mut scripts, player_id, &player, "playerenters", out, log);
+                player_event(
+                    &mut scripts,
+                    world,
+                    player_id,
+                    &player,
+                    "playerenters",
+                    out,
+                    log,
+                );
             }
         }
         Message::PlayerProps { player_id, props } => match world.players.get_mut(&player_id) {
@@ -288,7 +297,7 @@ fn handle(
         Message::PlayerLeft { player_id } => {
             if let Some(p) = world.players.remove(&player_id) {
                 log(format!("player {player_id} left: \"{}\"", show(&p.account)));
-                player_event(&mut scripts, player_id, &p, "playerleaves", out, log);
+                player_event(&mut scripts, world, player_id, &p, "playerleaves", out, log);
             }
         }
         Message::PlayerLevel { player_id, level } => {
@@ -301,29 +310,103 @@ fn handle(
                 if old != arrived.level {
                     let mut leaving = arrived.clone();
                     leaving.level = old;
-                    player_event(&mut scripts, player_id, &leaving, "playerleaves", out, log);
-                    player_event(&mut scripts, player_id, &arrived, "playerenters", out, log);
+                    player_event(
+                        &mut scripts,
+                        world,
+                        player_id,
+                        &leaving,
+                        "playerleaves",
+                        out,
+                        log,
+                    );
+                    player_event(
+                        &mut scripts,
+                        world,
+                        player_id,
+                        &arrived,
+                        "playerenters",
+                        out,
+                        log,
+                    );
                 }
             }
         }
-        Message::PmToNpc { .. } => note_once(
-            seen_unknown,
-            link::id::PM_TO_NPC,
-            log,
-            "PM_TO_NPC is not run yet",
-        ),
-        Message::ServerFlags { .. } => note_once(
-            seen_unknown,
-            link::id::SERVER_FLAGS,
-            log,
-            "SERVER_FLAGS is not applied yet",
-        ),
-        Message::TriggerAction { .. } => note_once(
-            seen_unknown,
-            link::id::TRIGGER_ACTION,
-            log,
-            "TRIGGER_ACTION is not run yet",
-        ),
+        Message::PmToNpc { player_id, text } => {
+            let text = seihai_core::protocol::latin1(&text);
+            match world.players.get(&player_id).cloned() {
+                Some(player) => {
+                    log(format!(
+                        "PM from player {player_id} on {}",
+                        show(&player.level)
+                    ));
+                    if let Some(s) = scripts.as_mut().filter(|s| s.is_started()) {
+                        s.set_nicks(nick_table(world));
+                        let produced = s.on_pm(player_id, &player, &text);
+                        log_produced(&produced, log);
+                        log_script_lines(s, log);
+                        out.extend(produced.messages);
+                    } else {
+                        note_once(
+                            seen_unknown,
+                            link::id::PM_TO_NPC,
+                            log,
+                            "PM_TO_NPC before scripts started, not run",
+                        );
+                    }
+                }
+                None => log(format!(
+                    "PM_TO_NPC from unknown player {player_id}, not run"
+                )),
+            }
+        }
+        Message::ServerFlags { entries } => {
+            world.server_flags = crate::world::parse_server_flags(&entries);
+            log(format!(
+                "server flags: {} entries",
+                world.server_flags.len()
+            ));
+            if let Some(s) = scripts.as_mut() {
+                s.set_server_flags(world.server_flags.clone());
+            }
+        }
+        Message::TriggerAction {
+            player_id,
+            level,
+            x,
+            y,
+            action,
+        } => {
+            // Same half-tile unit as WARP_PLAYER.
+            let tiles_x = f64::from(x) / 2.0;
+            let tiles_y = f64::from(y) / 2.0;
+            let action = seihai_core::protocol::latin1(&action);
+            log(format!(
+                "triggeraction {action} at {tiles_x},{tiles_y} on {}",
+                show(&level)
+            ));
+            let player = world.players.get(&player_id).cloned();
+            if let Some(s) = scripts.as_mut().filter(|s| s.is_started()) {
+                s.set_nicks(nick_table(world));
+                let produced = s.on_trigger(
+                    player_id,
+                    player.as_ref(),
+                    &level,
+                    tiles_x,
+                    tiles_y,
+                    &action,
+                );
+                log_produced(&produced, log);
+                log_script_lines(s, log);
+                out.extend(produced.messages);
+            } else {
+                note_once(
+                    seen_unknown,
+                    link::id::TRIGGER_ACTION,
+                    log,
+                    "TRIGGER_ACTION before scripts started, not run",
+                );
+            }
+        }
         Message::NpcAdded { .. } => note_once(
             seen_unknown,
             link::id::NPC_ADDED,
@@ -425,6 +508,8 @@ fn start_scripts(scripts: &mut Scripts, world: &World, log: Log) -> Vec<Message>
         ));
     }
     log_script_lines(scripts, log);
+    scripts.set_nicks(nick_table(world));
+    scripts.set_server_flags(world.server_flags.clone());
     let produced = scripts.start();
     log_produced(&produced, log);
     log_script_lines(scripts, log);
@@ -433,6 +518,7 @@ fn start_scripts(scripts: &mut Scripts, world: &World, log: Log) -> Vec<Message>
 
 fn player_event(
     scripts: &mut Option<&mut Scripts>,
+    world: &World,
     player_id: u16,
     player: &Player,
     event: &str,
@@ -445,6 +531,7 @@ fn player_event(
     if !scripts.is_started() {
         return;
     }
+    scripts.set_nicks(nick_table(world));
     let produced = scripts.on_player(player_id, player, event);
     log_produced(&produced, log);
     log_script_lines(scripts, log);
@@ -462,6 +549,18 @@ fn note_once(seen: &mut [bool; 256], id: u8, log: Log, line: &str) {
         seen[id as usize] = true;
         log(line.to_string());
     }
+}
+
+fn nick_table(world: &World) -> BTreeMap<u16, String> {
+    world
+        .players
+        .iter()
+        .filter_map(|(id, player)| {
+            player
+                .nick()
+                .map(|n| (*id, seihai_core::protocol::latin1(n)))
+        })
+        .collect()
 }
 
 fn log_script_lines(scripts: &mut Scripts, log: Log) {
