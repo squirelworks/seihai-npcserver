@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use seihai_core::protocol::parse_player_props;
 
 use crate::link::{self, show, Message, LINK_VERSION};
-use crate::scripts::Scripts;
+use crate::scripts::{Produced, Scripts};
 pub use crate::world::{Player, World};
 
 /// Timings. The defaults are the ones in `PROTOCOL.md`; tests shorten them.
@@ -200,13 +200,13 @@ fn session(
                 break;
             }
         }
-        // 2. Advance scripts by one configured tick. Effects are drained so
-        // they do not pile up; nothing is sent until the NPC → gserver link
-        // messages exist (milestone 2, "Effects to link messages").
+        // 2. Advance scripts by one configured tick and send what they asked for.
         if let Some(s) = scripts.as_deref_mut().filter(|s| s.is_started()) {
             let ms = u64::try_from(timing.tick.as_millis()).unwrap_or(u64::MAX);
-            let _effects = s.tick(ms);
+            let produced = s.tick(ms);
+            log_produced(&produced, log);
             log_script_lines(s, log);
+            out.extend(produced.messages);
         }
         // 3. Keep-alive.
         if last_recv.elapsed() >= timing.dead_after {
@@ -235,7 +235,7 @@ fn handle(
     world: &mut World,
     out: &mut Vec<Message>,
     seen_unknown: &mut [bool; 256],
-    scripts: Option<&mut Scripts>,
+    mut scripts: Option<&mut Scripts>,
     log: Log,
 ) -> Option<End> {
     match m {
@@ -248,7 +248,7 @@ fn handle(
             // Once per session. A later LEVEL_LIST replaces the names above
             // but does not reload scripts; `created` has already run.
             if let Some(s) = scripts.filter(|s| !s.is_started()) {
-                start_scripts(s, world, log);
+                out.extend(start_scripts(s, world, log));
             }
         }
         Message::LevelReloaded { name } => log(format!("level reloaded: {}", show(&name))),
@@ -271,6 +271,9 @@ fn handle(
                 prop_summary(&props)
             ));
             world.players.insert(player_id, p);
+            if let Some(player) = world.players.get(&player_id).cloned() {
+                player_event(&mut scripts, player_id, &player, "playerenters", out, log);
+            }
         }
         Message::PlayerProps { player_id, props } => match world.players.get_mut(&player_id) {
             Some(p) => {
@@ -285,14 +288,90 @@ fn handle(
         Message::PlayerLeft { player_id } => {
             if let Some(p) = world.players.remove(&player_id) {
                 log(format!("player {player_id} left: \"{}\"", show(&p.account)));
+                player_event(&mut scripts, player_id, &p, "playerleaves", out, log);
             }
         }
         Message::PlayerLevel { player_id, level } => {
             log(format!("player {player_id} entered \"{}\"", show(&level)));
-            if let Some(p) = world.players.get_mut(&player_id) {
-                p.level = level;
+            if let Some(mut arrived) = world.players.get(&player_id).cloned() {
+                let old = std::mem::replace(&mut arrived.level, level.clone());
+                if let Some(slot) = world.players.get_mut(&player_id) {
+                    slot.level = level;
+                }
+                if old != arrived.level {
+                    let mut leaving = arrived.clone();
+                    leaving.level = old;
+                    player_event(&mut scripts, player_id, &leaving, "playerleaves", out, log);
+                    player_event(&mut scripts, player_id, &arrived, "playerenters", out, log);
+                }
             }
         }
+        Message::PmToNpc { .. } => note_once(
+            seen_unknown,
+            link::id::PM_TO_NPC,
+            log,
+            "PM_TO_NPC is not run yet",
+        ),
+        Message::ServerFlags { .. } => note_once(
+            seen_unknown,
+            link::id::SERVER_FLAGS,
+            log,
+            "SERVER_FLAGS is not applied yet",
+        ),
+        Message::TriggerAction { .. } => note_once(
+            seen_unknown,
+            link::id::TRIGGER_ACTION,
+            log,
+            "TRIGGER_ACTION is not run yet",
+        ),
+        Message::NpcAdded { .. } => note_once(
+            seen_unknown,
+            link::id::NPC_ADDED,
+            log,
+            "NPC_ADDED from the gserver is ignored",
+        ),
+        Message::NpcProps { .. } => note_once(
+            seen_unknown,
+            link::id::NPC_PROPS,
+            log,
+            "NPC_PROPS from the gserver is ignored",
+        ),
+        Message::NpcDeleted { .. } => note_once(
+            seen_unknown,
+            link::id::NPC_DELETED,
+            log,
+            "NPC_DELETED from the gserver is ignored",
+        ),
+        Message::SetPlayerProps { .. } => note_once(
+            seen_unknown,
+            link::id::SET_PLAYER_PROPS,
+            log,
+            "SET_PLAYER_PROPS from the gserver is ignored",
+        ),
+        Message::WarpPlayer { .. } => note_once(
+            seen_unknown,
+            link::id::WARP_PLAYER,
+            log,
+            "WARP_PLAYER from the gserver is ignored",
+        ),
+        Message::AddWeapon { .. } => note_once(
+            seen_unknown,
+            link::id::ADD_WEAPON,
+            log,
+            "ADD_WEAPON from the gserver is ignored",
+        ),
+        Message::ServerFlag { .. } => note_once(
+            seen_unknown,
+            link::id::SERVER_FLAG,
+            log,
+            "SERVER_FLAG from the gserver is ignored",
+        ),
+        Message::Pm { .. } => note_once(
+            seen_unknown,
+            link::id::PM,
+            log,
+            "PM from the gserver is ignored",
+        ),
         Message::Ping { nonce } => out.push(Message::Pong { nonce }),
         Message::Pong { .. } => {}
         Message::Bye { reason } => {
@@ -321,12 +400,13 @@ fn handle(
 
 /// Load the NPC database (if this host has a world folder), run `created`,
 /// and log script lines. Called once, from the first `LEVEL_LIST`.
-fn start_scripts(scripts: &mut Scripts, world: &World, log: Log) {
+/// Returns `NPC_ADDED` and whatever `created` asked to send.
+fn start_scripts(scripts: &mut Scripts, world: &World, log: Log) -> Vec<Message> {
     let (count, problems) = match scripts.open_database() {
         Ok(v) => v,
         Err(e) => {
             log(format!("NPC database: {e}"));
-            return;
+            return Vec::new();
         }
     };
     log(format!("NPC database: {count} server-side NPCs"));
@@ -345,8 +425,43 @@ fn start_scripts(scripts: &mut Scripts, world: &World, log: Log) {
         ));
     }
     log_script_lines(scripts, log);
-    scripts.start();
+    let produced = scripts.start();
+    log_produced(&produced, log);
     log_script_lines(scripts, log);
+    produced.messages
+}
+
+fn player_event(
+    scripts: &mut Option<&mut Scripts>,
+    player_id: u16,
+    player: &Player,
+    event: &str,
+    out: &mut Vec<Message>,
+    log: Log,
+) {
+    let Some(scripts) = scripts.as_mut() else {
+        return;
+    };
+    if !scripts.is_started() {
+        return;
+    }
+    let produced = scripts.on_player(player_id, player, event);
+    log_produced(&produced, log);
+    log_script_lines(scripts, log);
+    out.extend(produced.messages);
+}
+
+fn log_produced(produced: &Produced, log: Log) {
+    for line in &produced.notes {
+        log(line.clone());
+    }
+}
+
+fn note_once(seen: &mut [bool; 256], id: u8, log: Log, line: &str) {
+    if !seen[id as usize] {
+        seen[id as usize] = true;
+        log(line.to_string());
+    }
 }
 
 fn log_script_lines(scripts: &mut Scripts, log: Log) {

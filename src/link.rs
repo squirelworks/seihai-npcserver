@@ -38,6 +38,17 @@ pub mod id {
     pub const PLAYER_PROPS: u8 = 0x21;
     pub const PLAYER_LEFT: u8 = 0x22;
     pub const PLAYER_LEVEL: u8 = 0x23;
+    pub const PM_TO_NPC: u8 = 0x24;
+    pub const SERVER_FLAGS: u8 = 0x25;
+    pub const TRIGGER_ACTION: u8 = 0x26;
+    pub const NPC_ADDED: u8 = 0x40;
+    pub const NPC_PROPS: u8 = 0x41;
+    pub const NPC_DELETED: u8 = 0x42;
+    pub const SET_PLAYER_PROPS: u8 = 0x43;
+    pub const WARP_PLAYER: u8 = 0x44;
+    pub const ADD_WEAPON: u8 = 0x45;
+    pub const SERVER_FLAG: u8 = 0x46;
+    pub const PM: u8 = 0x47;
 }
 
 /// One link message.
@@ -88,6 +99,56 @@ pub enum Message {
         player_id: u16,
         level: Vec<u8>,
     },
+    PmToNpc {
+        player_id: u16,
+        text: Vec<u8>,
+    },
+    /// Whole `server.` flag set, `name=value` entries.
+    ServerFlags {
+        entries: Vec<Vec<u8>>,
+    },
+    TriggerAction {
+        player_id: u16,
+        level: Vec<u8>,
+        x: u16,
+        y: u16,
+        action: Vec<u8>,
+    },
+    NpcAdded {
+        npc_id: u32,
+        level: Vec<u8>,
+        props: Vec<u8>,
+    },
+    NpcProps {
+        npc_id: u32,
+        props: Vec<u8>,
+    },
+    NpcDeleted {
+        npc_id: u32,
+    },
+    SetPlayerProps {
+        player_id: u16,
+        props: Vec<u8>,
+    },
+    WarpPlayer {
+        player_id: u16,
+        level: Vec<u8>,
+        x: u16,
+        y: u16,
+    },
+    AddWeapon {
+        player_id: u16,
+        weapon: Vec<u8>,
+    },
+    ServerFlag {
+        name: Vec<u8>,
+        set: bool,
+        value: Vec<u8>,
+    },
+    Pm {
+        player_id: u16,
+        text: Vec<u8>,
+    },
     /// A message this code does not know. Kept so it can be logged and skipped.
     Unknown {
         id: u8,
@@ -111,6 +172,17 @@ impl Message {
             Message::PlayerProps { .. } => id::PLAYER_PROPS,
             Message::PlayerLeft { .. } => id::PLAYER_LEFT,
             Message::PlayerLevel { .. } => id::PLAYER_LEVEL,
+            Message::PmToNpc { .. } => id::PM_TO_NPC,
+            Message::ServerFlags { .. } => id::SERVER_FLAGS,
+            Message::TriggerAction { .. } => id::TRIGGER_ACTION,
+            Message::NpcAdded { .. } => id::NPC_ADDED,
+            Message::NpcProps { .. } => id::NPC_PROPS,
+            Message::NpcDeleted { .. } => id::NPC_DELETED,
+            Message::SetPlayerProps { .. } => id::SET_PLAYER_PROPS,
+            Message::WarpPlayer { .. } => id::WARP_PLAYER,
+            Message::AddWeapon { .. } => id::ADD_WEAPON,
+            Message::ServerFlag { .. } => id::SERVER_FLAG,
+            Message::Pm { .. } => id::PM,
             Message::Unknown { id, .. } => *id,
         }
     }
@@ -170,6 +242,69 @@ impl Message {
                 d.extend_from_slice(&player_id.to_be_bytes());
                 put_str(&mut d, level)?;
             }
+            Message::PmToNpc { player_id, text } | Message::Pm { player_id, text } => {
+                d.extend_from_slice(&player_id.to_be_bytes());
+                put_str(&mut d, text)?;
+            }
+            Message::ServerFlags { entries } => {
+                let n = u16::try_from(entries.len())
+                    .map_err(|_| invalid("more than 65535 server flags"))?;
+                d.extend_from_slice(&n.to_be_bytes());
+                for e in entries {
+                    put_str(&mut d, e)?;
+                }
+            }
+            Message::TriggerAction {
+                player_id,
+                level,
+                x,
+                y,
+                action,
+            } => {
+                d.extend_from_slice(&player_id.to_be_bytes());
+                put_str(&mut d, level)?;
+                d.extend_from_slice(&x.to_be_bytes());
+                d.extend_from_slice(&y.to_be_bytes());
+                put_str(&mut d, action)?;
+            }
+            Message::NpcAdded {
+                npc_id,
+                level,
+                props,
+            } => {
+                d.extend_from_slice(&npc_id.to_be_bytes());
+                put_str(&mut d, level)?;
+                put_blob(&mut d, props)?;
+            }
+            Message::NpcProps { npc_id, props } => {
+                d.extend_from_slice(&npc_id.to_be_bytes());
+                put_blob(&mut d, props)?;
+            }
+            Message::NpcDeleted { npc_id } => d.extend_from_slice(&npc_id.to_be_bytes()),
+            Message::SetPlayerProps { player_id, props } => {
+                d.extend_from_slice(&player_id.to_be_bytes());
+                put_blob(&mut d, props)?;
+            }
+            Message::WarpPlayer {
+                player_id,
+                level,
+                x,
+                y,
+            } => {
+                d.extend_from_slice(&player_id.to_be_bytes());
+                put_str(&mut d, level)?;
+                d.extend_from_slice(&x.to_be_bytes());
+                d.extend_from_slice(&y.to_be_bytes());
+            }
+            Message::AddWeapon { player_id, weapon } => {
+                d.extend_from_slice(&player_id.to_be_bytes());
+                put_str(&mut d, weapon)?;
+            }
+            Message::ServerFlag { name, set, value } => {
+                put_str(&mut d, name)?;
+                d.push(u8::from(*set));
+                put_str(&mut d, value)?;
+            }
             Message::Unknown { data, .. } => d.extend_from_slice(data),
         }
         let len = u32::try_from(d.len()).map_err(|_| invalid("message over 4 GiB"))?;
@@ -222,6 +357,58 @@ impl Message {
             id::PLAYER_LEVEL => Message::PlayerLevel {
                 player_id: r.u16()?,
                 level: r.str()?,
+            },
+            id::PM_TO_NPC => Message::PmToNpc {
+                player_id: r.u16()?,
+                text: r.str()?,
+            },
+            id::SERVER_FLAGS => {
+                let n = r.u16()?;
+                let mut entries = Vec::with_capacity(n as usize);
+                for _ in 0..n {
+                    entries.push(r.str()?);
+                }
+                Message::ServerFlags { entries }
+            }
+            id::TRIGGER_ACTION => Message::TriggerAction {
+                player_id: r.u16()?,
+                level: r.str()?,
+                x: r.u16()?,
+                y: r.u16()?,
+                action: r.str()?,
+            },
+            id::NPC_ADDED => Message::NpcAdded {
+                npc_id: r.u32()?,
+                level: r.str()?,
+                props: r.blob()?,
+            },
+            id::NPC_PROPS => Message::NpcProps {
+                npc_id: r.u32()?,
+                props: r.blob()?,
+            },
+            id::NPC_DELETED => Message::NpcDeleted { npc_id: r.u32()? },
+            id::SET_PLAYER_PROPS => Message::SetPlayerProps {
+                player_id: r.u16()?,
+                props: r.blob()?,
+            },
+            id::WARP_PLAYER => Message::WarpPlayer {
+                player_id: r.u16()?,
+                level: r.str()?,
+                x: r.u16()?,
+                y: r.u16()?,
+            },
+            id::ADD_WEAPON => Message::AddWeapon {
+                player_id: r.u16()?,
+                weapon: r.str()?,
+            },
+            id::SERVER_FLAG => Message::ServerFlag {
+                name: r.str()?,
+                set: r.byte()? != 0,
+                value: r.str()?,
+            },
+            id::PM => Message::Pm {
+                player_id: r.u16()?,
+                text: r.str()?,
             },
             other => Message::Unknown {
                 id: other,
@@ -388,6 +575,9 @@ impl Cursor<'_> {
         self.pos = end;
         Ok(s)
     }
+    fn byte(&mut self) -> io::Result<u8> {
+        Ok(self.take(1)?[0])
+    }
     fn u16(&mut self) -> io::Result<u16> {
         let b = self.take(2)?;
         Ok(u16::from_be_bytes([b[0], b[1]]))
@@ -450,6 +640,53 @@ mod tests {
             Message::PlayerLevel {
                 player_id: 3,
                 level: b"gmaps/b.nw".to_vec(),
+            },
+            Message::PmToNpc {
+                player_id: 3,
+                text: b"hello npc".to_vec(),
+            },
+            Message::ServerFlags {
+                entries: vec![b"server.door=1".to_vec(), b"server.open".to_vec()],
+            },
+            Message::TriggerAction {
+                player_id: 3,
+                level: b"a.nw".to_vec(),
+                x: 60,
+                y: 62,
+                action: b"push".to_vec(),
+            },
+            Message::NpcAdded {
+                npc_id: 7,
+                level: b"a.nw".to_vec(),
+                props: vec![0x20, 0x21, b'b'],
+            },
+            Message::NpcProps {
+                npc_id: 7,
+                props: vec![0x2f, 0x22, b'h', b'i'],
+            },
+            Message::NpcDeleted { npc_id: 7 },
+            Message::SetPlayerProps {
+                player_id: 3,
+                props: vec![0x22, 0x25],
+            },
+            Message::WarpPlayer {
+                player_id: 3,
+                level: b"house.nw".to_vec(),
+                x: 61,
+                y: 62,
+            },
+            Message::AddWeapon {
+                player_id: 3,
+                weapon: b"sword".to_vec(),
+            },
+            Message::ServerFlag {
+                name: b"server.door".to_vec(),
+                set: true,
+                value: b"1".to_vec(),
+            },
+            Message::Pm {
+                player_id: 3,
+                text: b"hi".to_vec(),
             },
             Message::Unknown {
                 id: 0x99,
@@ -534,6 +771,8 @@ mod tests {
     fn short_data_is_an_error() {
         let body = [id::PLAYER_LEFT, 0, 0, 0, 1, 0];
         assert!(decode_body(&body).is_err());
+        let body = [id::NPC_DELETED, 0, 0, 0, 3, 0, 0, 1];
+        assert!(decode_body(&body).is_err());
         let body = [id::PING, 0, 0, 0, 9, 0];
         assert!(decode_body(&body).is_err());
         let body = [id::PING, 0, 0];
@@ -551,6 +790,38 @@ mod tests {
         assert!(tokens_match(b"abc", b"abc"));
         assert!(!tokens_match(b"abc", b"abd"));
         assert!(!tokens_match(b"abc", b"abcd"));
+    }
+
+    #[test]
+    fn npc_props_bytes_match_protocol_md() {
+        let m = Message::NpcProps {
+            npc_id: 7,
+            props: vec![0x2f, 0x22, b'h', b'i'],
+        };
+        let mut body = Vec::new();
+        m.encode_into(&mut body).unwrap();
+        assert_eq!(
+            body,
+            [
+                id::NPC_PROPS,
+                0,
+                0,
+                0,
+                12,
+                0,
+                0,
+                0,
+                7,
+                0,
+                0,
+                0,
+                4,
+                0x2f,
+                0x22,
+                b'h',
+                b'i',
+            ]
+        );
     }
 
     #[test]

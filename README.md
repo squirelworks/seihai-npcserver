@@ -10,14 +10,15 @@ Part of the Seihai server stack:
 [seihai-gserver-v2](https://github.com/squirelworks/seihai-gserver-v2) (GPL fork of GServer-v2, ships first) ·
 client: [seihai](https://github.com/squirelworks/seihai).
 
-**Status: milestone 2 started.** It connects to the gserver over the NPC-server
+**Status: milestone 2.** It connects to the gserver over the NPC-server
 link, authenticates, and logs the level list and player props it is sent.
-After that list it loads `<world>/npcs` and runs `created` and `timeout`. It
-does not yet send NPC or player changes back over the link. The link is
-specified in [PROTOCOL.md](PROTOCOL.md), the module map and next steps are in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/NEXT.md](docs/NEXT.md),
-the plan is in [docs/PLAN.md](docs/PLAN.md), and the rules every contributor
-and coding agent follows are in [AGENTS.md](AGENTS.md).
+After that list it loads `<world>/npcs`, runs `created` and `timeout`, and
+sends NPC and player changes back over the link. The link is specified in
+[PROTOCOL.md](PROTOCOL.md), the module map is in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), what is left is in
+[docs/NEXT.md](docs/NEXT.md), the plan is in [docs/PLAN.md](docs/PLAN.md),
+and the rules every contributor and coding agent follows are in
+[AGENTS.md](AGENTS.md).
 
 ## Run
 

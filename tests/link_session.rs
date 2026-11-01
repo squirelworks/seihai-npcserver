@@ -151,14 +151,14 @@ fn unknown_messages_are_skipped() {
     script.updates.insert(
         0,
         Message::Unknown {
-            id: 0x45,
+            id: 0x48,
             data: vec![9; 10],
         },
     );
     script.updates.insert(
         1,
         Message::Unknown {
-            id: 0x45,
+            id: 0x48,
             data: vec![],
         },
     );
@@ -168,7 +168,7 @@ fn unknown_messages_are_skipped() {
     assert_eq!(
         lines
             .iter()
-            .filter(|l| l.contains("unknown message 0x45"))
+            .filter(|l| l.contains("unknown message 0x48"))
             .count(),
         1
     );
@@ -266,8 +266,8 @@ SCRIPTEND
         text.contains("script not-on-server.nw: object 0: call to unknown function `otherhook`"),
         "{text}"
     );
-    // Effects are not link messages yet. The mock must still see only HELLO and PONGs.
-    // (Checked by the session ending on the lab script's BYE, same as the other tests.)
+    // `madeupthing` / `timeouthook` are not link messages. NPC_ADDED still
+    // goes out for the two NPCs; the lab script's BYE ends the session.
 }
 
 #[test]
@@ -305,6 +305,114 @@ fn scripts_do_not_load_when_rejected() {
     assert!(!text.contains("NPC database"), "{text}");
     assert!(!text.contains("madeupthing"), "{text}");
     assert!(!scripts.is_started());
+}
+
+#[test]
+fn timeout_setcharprop_arrives_as_npc_props() {
+    let dir = std::env::temp_dir().join(format!("seihai-npcserver-props-{}", std::process::id()));
+    let npcs = dir.join("npcs");
+    std::fs::create_dir_all(&npcs).unwrap();
+    std::fs::write(
+        npcs.join("greet.txt"),
+        "\
+LEVEL onlinestartlocal.nw
+X 30
+Y 30
+IMAGE block.png
+SCRIPT
+if (created) { timeout = 0.1; }
+if (timeout) { setcharprop #c,hi; timeout = 1; }
+SCRIPTEND
+",
+    )
+    .unwrap();
+
+    let listener = mock::bind(0).unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    let server = thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let hello = link::read_frame(&mut s).unwrap();
+        link::write_frame(
+            &mut s,
+            &[
+                Message::Welcome {
+                    link_version: 1,
+                    server_name: b"Lab Mock".to_vec(),
+                    program: b"test".to_vec(),
+                },
+                Message::LevelList {
+                    names: vec![b"onlinestartlocal.nw".to_vec()],
+                },
+            ],
+        )
+        .unwrap();
+        s.set_read_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_millis(800);
+        let mut got = Vec::new();
+        while std::time::Instant::now() < deadline {
+            match link::read_frame(&mut s) {
+                Ok(m) => got.extend(m),
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
+                    continue;
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = link::write_frame(
+            &mut s,
+            &[Message::Bye {
+                reason: b"props seen".to_vec(),
+            }],
+        );
+        (hello, got)
+    });
+
+    let mut scripts = seihai_npcserver::scripts::Scripts::with_world(
+        seihai_core::scripting::engine::Era::V21,
+        &dir,
+    );
+    let timing = Timing {
+        tick: Duration::from_millis(100),
+        handshake: Duration::from_secs(5),
+        ping_after: Duration::from_secs(30),
+        dead_after: Duration::from_secs(30),
+    };
+    let mut lines = Vec::new();
+    let (end, _) = session::run(&addr, TOKEN, timing, Some(&mut scripts), &mut |l| {
+        lines.push(l)
+    });
+    let (hello, got) = server.join().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(matches!(hello[0], Message::Hello { .. }), "{hello:?}");
+    assert!(
+        matches!(end, End::Closed(ref r) if r.starts_with("bye:")),
+        "{end:?} {lines:#?}"
+    );
+
+    assert!(
+        got.iter().any(|m| matches!(
+            m,
+            Message::NpcAdded { npc_id: 1, level, .. } if level == b"onlinestartlocal.nw"
+        )),
+        "NPC_ADDED missing in {got:?}\n{lines:#?}"
+    );
+    let props = got.iter().find_map(|m| match m {
+        Message::NpcProps { npc_id: 1, props } => Some(props.clone()),
+        _ => None,
+    });
+    let Some(props) = props else {
+        panic!("NPC_PROPS missing in {got:?}\n{lines:#?}");
+    };
+    let mut raw = vec![0x20, 0x20, 0x21];
+    raw.extend_from_slice(&props);
+    let (id, parsed) = seihai_core::protocol::npcprops::parse_npc_props(&raw, false).unwrap();
+    assert_eq!(id, 1);
+    assert_eq!(parsed.message.as_deref(), Some("hi"));
 }
 
 #[test]
