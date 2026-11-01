@@ -5,8 +5,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
+use seihai_core::scripting::engine::Era;
+
 use seihai_npcserver::link::{DEFAULT_ADDR, TOKEN_ENV};
-use seihai_npcserver::npcdb;
+use seihai_npcserver::scripts::Scripts;
 use seihai_npcserver::session::{self, End, Timing};
 
 const USAGE: &str = "\
@@ -103,26 +105,24 @@ fn main() -> ExitCode {
     ));
     if let Some(w) = &args.world {
         log(format!("world folder {}", w.display()));
-        // TODO(milestone 2): load after the level list arrives (the 2001
-        // order), hand the NPCs to `scripts::Scripts`, and run its tick from
-        // the session loop. For now this only checks the files.
-        match npcdb::load(w) {
-            Ok((npcs, problems)) => {
-                log(format!("NPC database: {} server-side NPCs", npcs.len()));
-                for p in problems {
-                    log(format!("  skipped {p}"));
-                }
-            }
-            Err(e) => log(format!(
-                "NPC database: cannot read {}: {e}",
-                w.join("npcs").display()
-            )),
-        }
     }
     let mut delay = Duration::from_secs(1);
     loop {
         let began = Instant::now();
-        let (end, world) = session::run(&args.gserver, &token, Timing::default(), &mut log);
+        // A new host per connection: `created` runs again after the next
+        // LEVEL_LIST. Server-side scripts from 2001 are 2.x GS1 (V21).
+        // The database is read inside the session, after that list.
+        let mut scripts = args
+            .world
+            .as_ref()
+            .map(|w| Scripts::with_world(Era::V21, w));
+        let (end, world) = session::run(
+            &args.gserver,
+            &token,
+            Timing::default(),
+            scripts.as_mut(),
+            &mut log,
+        );
         match end {
             End::Rejected(reason) => {
                 log(format!("stopping: {reason}"));
