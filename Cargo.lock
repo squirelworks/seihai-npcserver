@@ -391,7 +391,7 @@ dependencies = [
 
 [[package]]
 name = "seihai-npcserver"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "seihai-core",
 ]

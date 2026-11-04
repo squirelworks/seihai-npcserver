@@ -1,6 +1,6 @@
 [package]
 name = "seihai-npcserver"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "A Graal NPC-server: a separate program that logs into seihai-gserver and runs server-side NPC scripts."
