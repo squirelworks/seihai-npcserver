@@ -203,6 +203,7 @@ fn session(
         // 2. Advance scripts by one configured tick and send what they asked for.
         if let Some(s) = scripts.as_deref_mut().filter(|s| s.is_started()) {
             s.set_nicks(nick_table(world));
+            s.set_gear(gear_table(world));
             let ms = u64::try_from(timing.tick.as_millis()).unwrap_or(u64::MAX);
             let produced = s.tick(ms);
             log_produced(&produced, log);
@@ -341,6 +342,7 @@ fn handle(
                     ));
                     if let Some(s) = scripts.as_mut().filter(|s| s.is_started()) {
                         s.set_nicks(nick_table(world));
+                        s.set_gear(gear_table(world));
                         let produced = s.on_pm(player_id, &player, &text);
                         log_produced(&produced, log);
                         log_script_lines(s, log);
@@ -387,6 +389,7 @@ fn handle(
             let player = world.players.get(&player_id).cloned();
             if let Some(s) = scripts.as_mut().filter(|s| s.is_started()) {
                 s.set_nicks(nick_table(world));
+                s.set_gear(gear_table(world));
                 let produced = s.on_trigger(
                     player_id,
                     player.as_ref(),
@@ -539,6 +542,7 @@ fn start_scripts(scripts: &mut Scripts, world: &World, log: Log) -> Vec<Message>
     }
     log_script_lines(scripts, log);
     scripts.set_nicks(nick_table(world));
+    scripts.set_gear(gear_table(world));
     scripts.set_server_flags(world.server_flags.clone());
     let produced = scripts.start();
     log_produced(&produced, log);
@@ -562,6 +566,7 @@ fn player_event(
         return;
     }
     scripts.set_nicks(nick_table(world));
+    scripts.set_gear(gear_table(world));
     let produced = scripts.on_player(player_id, player, event);
     log_produced(&produced, log);
     log_script_lines(scripts, log);
@@ -591,6 +596,32 @@ fn nick_table(world: &World) -> BTreeMap<u16, String> {
                 .map(|n| (*id, seihai_core::protocol::latin1(n)))
         })
         .collect()
+}
+
+/// Each online player's current sword (8) and shield (9) image, in the
+/// `c(len)` + name form the props carry, when the gserver sent one.
+fn gear_table(world: &World) -> BTreeMap<u16, crate::effects::Gear> {
+    world
+        .players
+        .iter()
+        .map(|(id, player)| {
+            (
+                *id,
+                crate::effects::Gear {
+                    sword: gear_image(player.props.get(&8), 4),
+                    shield: gear_image(player.props.get(&9), 3),
+                },
+            )
+        })
+        .collect()
+}
+
+/// The image part of a sword or shield prop: present when the first value
+/// byte is above `max_bare` (the highest power sent without an image).
+fn gear_image(raw: Option<&Vec<u8>>, max_bare: u8) -> Option<Vec<u8>> {
+    let raw = raw?;
+    let v = raw.first()?.wrapping_sub(0x20);
+    (v > max_bare && raw.len() > 1).then(|| raw[1..].to_vec())
 }
 
 fn log_script_lines(scripts: &mut Scripts, log: Log) {
@@ -624,5 +655,20 @@ fn prop_summary(stream: &[u8]) -> String {
         "none".into()
     } else {
         s.join(" ")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gear_image_needs_the_image_form() {
+        let img = [&[0x20 + 10][..], b"sword1.png"].concat();
+        let with = [&[0x20 + 31][..], &img[..]].concat();
+        assert_eq!(gear_image(Some(&with), 4), Some(img));
+        // A bare power has no image.
+        assert_eq!(gear_image(Some(&vec![0x20 + 2]), 4), None);
+        assert_eq!(gear_image(None, 3), None);
     }
 }

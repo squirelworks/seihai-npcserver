@@ -64,10 +64,14 @@ Work in this order, one branch and pull request each. The design is in
       sends its effects (and an `NPC_TRIGGER_ACTION`) to the gserver. A test
       pins both.
 
+- [x] **Sword and shield power.** `playerswordpower` and
+      `playershieldpower` are `SET_PLAYER_PROPS` props 8 and 9, keeping the
+      image the gserver last sent for that player. With no image known,
+      the bare power form.
+
 - [ ] **The rest of the logged-only effects**, one PR per group, each added
       to `PROTOCOL.md` here and in `seihai-gserver`: `sendtoserver`, and
-      the player variables still logged (`playerswordpower`,
-      `playershieldpower`, `playerhp`, the selected weapon).
+      the player variables still logged (`playerhp`, the selected weapon).
 
 Milestone 3 is next (`docs/PLAN.md`): a sample world whose NPCs only work
 when the NPC-server is running, lab-tested with real clients once

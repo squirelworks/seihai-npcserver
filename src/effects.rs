@@ -51,9 +51,25 @@ pub struct Outbound {
     /// Online player id to nickname. `#n(id)` expands from this; an id that
     /// is absent stays written as `#n(id)`.
     nicks: BTreeMap<u16, String>,
+    /// Online player id to current sword and shield image.
+    gear: BTreeMap<u16, Gear>,
+}
+
+/// A player's current sword and shield image, each in the `c(len)` + name
+/// form of props 8 and 9, when the gserver sent one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Gear {
+    pub sword: Option<Vec<u8>>,
+    pub shield: Option<Vec<u8>>,
 }
 
 impl Outbound {
+    /// Replace the id-to-gear table. Built from the players the gserver
+    /// has listed, like [`Self::set_nicks`].
+    pub fn set_gear(&mut self, gear: BTreeMap<u16, Gear>) {
+        self.gear = gear;
+    }
+
     /// Replace the id-to-nickname table. Built from the players the gserver
     /// has listed; call it again when that list changes.
     pub fn set_nicks(&mut self, nicks: BTreeMap<u16, String>) {
@@ -440,6 +456,18 @@ impl Outbound {
             "playerrupees" => prop_gint3(3, value),
             "playerdarts" => prop_byte(4, count_gchar(value)),
             "playerbombs" => prop_byte(5, count_gchar(value)),
+            // SWORDPOWER (8) and SHIELDPOWER (9) carry the image too:
+            // c(power + 30) + image and c(power + 10) + image. Without a
+            // known image only the bare form fits, c(power), sword 0 to 4
+            // and shield 0 to 3.
+            "playerswordpower" => {
+                let image = self.gear.get(&player_id).and_then(|g| g.sword.clone());
+                gear_prop(8, value, 4, 30, image)
+            }
+            "playershieldpower" => {
+                let image = self.gear.get(&player_id).and_then(|g| g.shield.clone());
+                gear_prop(9, value, 3, 10, image)
+            }
             other => {
                 return self.skip(
                     &format!("player var {other}"),
@@ -578,6 +606,21 @@ fn prop_head(name: &str) -> Vec<u8> {
 
 fn prop_byte(id: u8, value: u8) -> Vec<u8> {
     vec![id + 0x20, value.min(223) + 0x20]
+}
+
+/// A sword or shield prop. With `image` (already in `c(len)` + name form)
+/// the value is `power + offset`; without one it is the bare power, at
+/// most `max_bare`.
+fn gear_prop(id: u8, power: f64, max_bare: u8, offset: u8, image: Option<Vec<u8>>) -> Vec<u8> {
+    match image {
+        Some(image) => {
+            let p = power.round().clamp(0.0, f64::from(223 - offset)) as u8;
+            let mut out = vec![id + 0x20, p + offset + 0x20];
+            out.extend_from_slice(&image);
+            out
+        }
+        None => prop_byte(id, power.round().clamp(0.0, f64::from(max_bare)) as u8),
+    }
 }
 
 /// A count as one GCHAR (0 to 223).
@@ -1229,15 +1272,70 @@ mod tests {
                 "{name}"
             );
         }
-        let sword = out.map(
+        let hp = out.map(
             &Effect::SetPlayerVar {
-                name: "playerswordpower".into(),
+                name: "playerhp".into(),
                 value: 2.0,
             },
             &ctx_player(2),
         );
-        assert!(sword.messages.is_empty());
-        assert!(sword.notes[0].contains("unsupported"));
+        assert!(hp.messages.is_empty());
+        assert!(hp.notes[0].contains("unsupported"));
+    }
+
+    #[test]
+    fn sword_and_shield_power_keep_the_image() {
+        let mut out = Outbound::default();
+        let set = |out: &mut Outbound, name: &str, value: f64| {
+            let m = out.map(
+                &Effect::SetPlayerVar {
+                    name: name.into(),
+                    value,
+                },
+                &ctx_player(2),
+            );
+            let Message::SetPlayerProps { props, .. } = &m.messages[0] else {
+                panic!("{name}: {:?}", m.messages);
+            };
+            props.clone()
+        };
+        // No image known: the bare power, capped at 4 (sword) and 3 (shield).
+        assert_eq!(
+            set(&mut out, "playerswordpower", 2.0),
+            vec![8 + 0x20, 2 + 0x20]
+        );
+        assert_eq!(
+            set(&mut out, "playerswordpower", 9.0),
+            vec![8 + 0x20, 4 + 0x20]
+        );
+        assert_eq!(
+            set(&mut out, "playershieldpower", 9.0),
+            vec![9 + 0x20, 3 + 0x20]
+        );
+
+        let image = |name: &[u8]| [&[name.len() as u8 + 0x20][..], name].concat();
+        out.set_gear(BTreeMap::from([(
+            2,
+            Gear {
+                sword: Some(image(b"sword1.png")),
+                shield: Some(image(b"shield1.png")),
+            },
+        )]));
+        let sword = set(&mut out, "playerswordpower", 3.0);
+        assert_eq!(
+            sword,
+            [&[8 + 0x20, 33 + 0x20][..], &image(b"sword1.png")].concat()
+        );
+        let shield = set(&mut out, "playershieldpower", 2.0);
+        assert_eq!(
+            shield,
+            [&[9 + 0x20, 12 + 0x20][..], &image(b"shield1.png")].concat()
+        );
+        // Both read back as one whole prop each.
+        let both = [sword, shield].concat();
+        let parsed = parse_player_props(&both);
+        assert_eq!(parsed.iter().map(|p| p.id).collect::<Vec<_>>(), vec![8, 9]);
+        assert_eq!(parsed[0].raw[1..], image(b"sword1.png")[..]);
     }
 
     #[test]

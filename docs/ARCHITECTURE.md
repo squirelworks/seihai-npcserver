@@ -67,6 +67,7 @@ Every 0.1 s (the smallest useful `timeout`):
    | `Command` `showcharacter` | `NPC_PROPS`: image `#c#`, gani `idle` |
    | `SetPlayerVar` `playerx`, `playery`, `playerdir`, `playerhearts` | `SET_PLAYER_PROPS` (props 15, 16, 17, 2, the GCHAR forms this server already reads) |
    | `SetPlayerVar` `playerrupees`, `playerdarts`, `playerbombs` | `SET_PLAYER_PROPS`: prop 3 as a GINT3, props 4 and 5 as GCHARs (counts clamped to 0 to 223) |
+   | `SetPlayerVar` `playerswordpower`, `playershieldpower` | `SET_PLAYER_PROPS` prop 8 or 9 with the player's current image from the gserver's props (`c(power + 30)` or `c(power + 10)` + image). With no image known, the bare power (sword 0 to 4, shield 0 to 3) |
    | `Play` (`play`, `playlooped`, `play2`) | `PLAY_SOUND` for the script's level, at the NPC or at `play2`'s point. `play2`'s volume is dropped |
    | `StopSound`, `StopMidi` | `STOP_SOUND`, `STOP_MIDI` for the script's level |
    | `SetShape` | `NPC_SHAPE` (kind, width and height in pixels) |

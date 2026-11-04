@@ -439,6 +439,7 @@ if (playerenters) {
   setshape 1,32,16;
   triggeraction 10,20,ring,a b;
   playerrupees = 300;
+  playerswordpower = 3;
   playerbombs = 7;
   sendrpgmessage hi;
   addweapon Sword;
@@ -471,7 +472,13 @@ SCRIPTEND
                     player_id: 2,
                     account: b"test205".to_vec(),
                     level: b"onlinestartlocal.nw".to_vec(),
-                    props: mock::sample_props(b"test205", 30, 30),
+                    // Sword power 1 with image `sword1.png` (c(1 + 30) + image).
+                    props: [
+                        &mock::sample_props(b"test205", 30, 30)[..],
+                        &[8 + 0x20, 31 + 0x20, 10 + 0x20],
+                        b"sword1.png",
+                    ]
+                    .concat(),
                 },
             ],
         )
@@ -620,6 +627,14 @@ SCRIPTEND
             props: vec![5 + 0x20, 7 + 0x20],
         }),
         "playerbombs missing in {got:?}"
+    );
+    // Sword power 3 keeps the image the gserver sent.
+    assert!(
+        got.contains(&Message::SetPlayerProps {
+            player_id: 2,
+            props: [&[8 + 0x20, 33 + 0x20, 10 + 0x20][..], b"sword1.png"].concat(),
+        }),
+        "playerswordpower missing in {got:?}"
     );
     assert!(
         got.iter()

@@ -130,6 +130,12 @@ impl Scripts {
         self.outbound.set_nicks(nicks);
     }
 
+    /// Online player id to current sword and shield image.
+    /// `playerswordpower` and `playershieldpower` keep the image.
+    pub fn set_gear(&mut self, gear: BTreeMap<u16, crate::effects::Gear>) {
+        self.outbound.set_gear(gear);
+    }
+
     /// Replace the `server.` flag set on every level. `entries` is the whole
     /// set from `SERVER_FLAGS` (`name` to value).
     pub fn set_server_flags(&mut self, flags: BTreeMap<String, String>) {
