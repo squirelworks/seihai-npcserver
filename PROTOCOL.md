@@ -180,9 +180,9 @@ holds that point. `x` and `y` are half tiles, the same unit as
 The sound messages are for the players in `level`, the level whose script
 ran the command. `PLAY_SOUND` from `play` and `playlooped` is at the NPC's
 position; from `play2` it is at the point the script names. `play2`'s volume
-argument is not carried, because the script engine does not keep it. A `play` with no NPC and no point is logged once and
-not sent. How the gserver passes these on to each client generation is the
-gserver's side of the link.
+argument is not carried, because the script engine does not keep it. A `play`
+with no NPC and no point is logged once and not sent. How the gserver passes
+these on to each client generation is the gserver's side of the link.
 
 ### 0x80 to 0xFF: NPC Control (*reserved*)
 
