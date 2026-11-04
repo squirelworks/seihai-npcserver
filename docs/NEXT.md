@@ -53,13 +53,18 @@ Work in this order, one branch and pull request each. The design is in
 - [x] **A script's own `triggeraction`.** Sent as `NPC_TRIGGER_ACTION`
       (`0x4C`) for the script's level, with the action and its params.
 
+- [x] **Rupees, darts and bombs.** `playerrupees`, `playerdarts` and
+      `playerbombs` are `SET_PLAYER_PROPS`: prop 3 as a GINT3, props 4 and
+      5 as GCHARs. No new link message.
+
 - [ ] **Server NPCs hearing each other's `triggeraction`.** It is not fired
       on this server's own NPCs yet. Doing that needs a queue so a trigger
       that answers a trigger runs on the next tick, not in a loop.
 
 - [ ] **The rest of the logged-only effects**, one PR per group, each added
       to `PROTOCOL.md` here and in `seihai-gserver`: `sendtoserver`, and
-      player variables that are not a GCHAR prop.
+      the player variables still logged (`playerswordpower`,
+      `playershieldpower`, `playerhp`, the selected weapon).
 
 Milestone 3 is next (`docs/PLAN.md`): a sample world whose NPCs only work
 when the NPC-server is running, lab-tested with real clients once
