@@ -144,8 +144,10 @@ version. `seihai-npcserver` sends `NPC_ADDED` when it loads an NPC, and the
 other rows when a script effect maps onto them (`docs/ARCHITECTURE.md`).
 `say2` is sent as `PM` to the player the event ran for. `toweapons` and
 `addweapon` are sent as `ADD_WEAPON`. `showcharacter` is `NPC_PROPS` with
-image `#c#` and gani `idle`. A script command with no message in this
-table is logged once and not sent. `0x48` to `0x7F` stay reserved.
+image `#c#` and gani `idle`. `play`, `playlooped` and `play2` are
+`PLAY_SOUND`; `stopsound` is `STOP_SOUND` and `stopmidi` is `STOP_MIDI`. A
+script command with no message in this table is logged once and not sent.
+`0x4B` to `0x7F` stay reserved.
 
 | Id | Name | Fields |
 |---|---|---|
@@ -157,6 +159,9 @@ table is logged once and not sent. `0x48` to `0x7F` stay reserved.
 | `0x45` | `ADD_WEAPON` | `player_id: u16`, `weapon: str` |
 | `0x46` | `SERVER_FLAG` | `name: str`, `set: u8` (1 set, 0 unset), `value: str` |
 | `0x47` | `PM` | `player_id: u16`, `text: str` |
+| `0x48` | `PLAY_SOUND` | `level: str`, `file: str`, `x: u16`, `y: u16` (half tiles), `looped: u8` (1 `playlooped`, 0 otherwise) |
+| `0x49` | `STOP_SOUND` | `level: str`, `file: str` |
+| `0x4A` | `STOP_MIDI` | `level: str` |
 
 `npc_id` is the NPC-server's id for a server-side NPC, unique while the link is
 up. NPC prop streams use the same encoding the gserver sends a 2.22 client in
@@ -171,6 +176,13 @@ replaces the server flag set scripts read as `server.` names.
 `TRIGGER_ACTION` fires `action<name>` on each NPC whose touch rectangle
 holds that point. `x` and `y` are half tiles, the same unit as
 `WARP_PLAYER`.
+
+The sound messages are for the players in `level`, the level whose script
+ran the command. `PLAY_SOUND` from `play` and `playlooped` is at the NPC's
+position; from `play2` it is at the point the script names. `play2`'s volume
+argument is not carried, because the script engine does not keep it. A `play` with no NPC and no point is logged once and
+not sent. How the gserver passes these on to each client generation is the
+gserver's side of the link.
 
 ### 0x80 to 0xFF: NPC Control (*reserved*)
 
@@ -216,3 +228,4 @@ With `npcserver = auto` the gserver:
 |---|---|---|
 | 1 | 2026-10-31 | First version: control, levels, players (milestone 1) |
 | 1 | 2026-11-01 | Milestone 2 messages (`0x24` to `0x26`, `0x40` to `0x47`) specified. No version bump: the ids were reserved. This copy only; `seihai-gserver` still has the earlier draft until its side of the link is written. |
+| 1 | 2026-11-04 | Sound messages `0x48` to `0x4A` specified. No version bump: the ids were reserved. This copy only, as above. |

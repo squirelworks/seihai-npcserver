@@ -49,6 +49,9 @@ pub mod id {
     pub const ADD_WEAPON: u8 = 0x45;
     pub const SERVER_FLAG: u8 = 0x46;
     pub const PM: u8 = 0x47;
+    pub const PLAY_SOUND: u8 = 0x48;
+    pub const STOP_SOUND: u8 = 0x49;
+    pub const STOP_MIDI: u8 = 0x4A;
 }
 
 /// One link message.
@@ -149,6 +152,23 @@ pub enum Message {
         player_id: u16,
         text: Vec<u8>,
     },
+    /// `play`, `playlooped`, `play2`: a sound at a point in a level.
+    PlaySound {
+        level: Vec<u8>,
+        file: Vec<u8>,
+        x: u16,
+        y: u16,
+        looped: bool,
+    },
+    /// `stopsound`: stop that sound for the players in a level.
+    StopSound {
+        level: Vec<u8>,
+        file: Vec<u8>,
+    },
+    /// `stopmidi`: stop the background music for the players in a level.
+    StopMidi {
+        level: Vec<u8>,
+    },
     /// A message this code does not know. Kept so it can be logged and skipped.
     Unknown {
         id: u8,
@@ -183,6 +203,9 @@ impl Message {
             Message::AddWeapon { .. } => id::ADD_WEAPON,
             Message::ServerFlag { .. } => id::SERVER_FLAG,
             Message::Pm { .. } => id::PM,
+            Message::PlaySound { .. } => id::PLAY_SOUND,
+            Message::StopSound { .. } => id::STOP_SOUND,
+            Message::StopMidi { .. } => id::STOP_MIDI,
             Message::Unknown { id, .. } => *id,
         }
     }
@@ -305,6 +328,24 @@ impl Message {
                 d.push(u8::from(*set));
                 put_str(&mut d, value)?;
             }
+            Message::PlaySound {
+                level,
+                file,
+                x,
+                y,
+                looped,
+            } => {
+                put_str(&mut d, level)?;
+                put_str(&mut d, file)?;
+                d.extend_from_slice(&x.to_be_bytes());
+                d.extend_from_slice(&y.to_be_bytes());
+                d.push(u8::from(*looped));
+            }
+            Message::StopSound { level, file } => {
+                put_str(&mut d, level)?;
+                put_str(&mut d, file)?;
+            }
+            Message::StopMidi { level } => put_str(&mut d, level)?,
             Message::Unknown { data, .. } => d.extend_from_slice(data),
         }
         let len = u32::try_from(d.len()).map_err(|_| invalid("message over 4 GiB"))?;
@@ -410,6 +451,18 @@ impl Message {
                 player_id: r.u16()?,
                 text: r.str()?,
             },
+            id::PLAY_SOUND => Message::PlaySound {
+                level: r.str()?,
+                file: r.str()?,
+                x: r.u16()?,
+                y: r.u16()?,
+                looped: r.byte()? != 0,
+            },
+            id::STOP_SOUND => Message::StopSound {
+                level: r.str()?,
+                file: r.str()?,
+            },
+            id::STOP_MIDI => Message::StopMidi { level: r.str()? },
             other => Message::Unknown {
                 id: other,
                 data: data.to_vec(),
@@ -688,6 +741,20 @@ mod tests {
                 player_id: 3,
                 text: b"hi".to_vec(),
             },
+            Message::PlaySound {
+                level: b"a.nw".to_vec(),
+                file: b"chest.wav".to_vec(),
+                x: 60,
+                y: 62,
+                looped: true,
+            },
+            Message::StopSound {
+                level: b"a.nw".to_vec(),
+                file: b"chest.wav".to_vec(),
+            },
+            Message::StopMidi {
+                level: b"a.nw".to_vec(),
+            },
             Message::Unknown {
                 id: 0x99,
                 data: vec![1, 2, 3],
@@ -700,6 +767,24 @@ mod tests {
         let msgs = all();
         let frame = encode_frame(&msgs).unwrap();
         assert_eq!(read_frame(&mut &frame[..]).unwrap(), msgs);
+    }
+
+    #[test]
+    fn play_sound_bytes_match_protocol_md() {
+        let m = Message::PlaySound {
+            level: b"a".to_vec(),
+            file: b"s".to_vec(),
+            x: 60,
+            y: 62,
+            looped: true,
+        };
+        let mut out = Vec::new();
+        m.encode_into(&mut out).unwrap();
+        // id 0x48; data len 11; level "a"; file "s"; x 60; y 62; looped 1.
+        assert_eq!(
+            out,
+            [0x48, 0, 0, 0, 11, 0, 1, b'a', 0, 1, b's', 0, 60, 0, 62, 1]
+        );
     }
 
     #[test]

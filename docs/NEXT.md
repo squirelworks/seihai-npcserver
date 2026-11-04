@@ -37,9 +37,20 @@ Work in this order, one branch and pull request each. The design is in
       `action<name>`. `#n(id)` expands from `World.players` when that id
       is online. Still unsupported, logged once, because this link has no
       message for them: `say`, `play`, `playlooped`, `play2`, `stopsound`,
-      `stopmidi`, `setshape`, a script's own `triggeraction`,
+      `stopmidi` (sounds since added, below), `setshape`, a script's own `triggeraction`,
       `sendrpgmessage`, `sendtoserver`, other commands, and player
       variables that are not a GCHAR prop (`playerrupees` and the rest).
+
+- [x] **Sounds.** `play`, `playlooped` and `play2` are `PLAY_SOUND`,
+      `stopsound` is `STOP_SOUND` and `stopmidi` is `STOP_MIDI`, each for
+      the script's level (`PROTOCOL.md`, `0x48` to `0x4A`). The mock
+      gserver receives them in the loopback test. `play2`'s volume is not
+      carried. The `seihai-gserver` side still has to apply them.
+
+- [ ] **The rest of the logged-only effects**, one PR per group, each added
+      to `PROTOCOL.md` here and in `seihai-gserver`: `setshape`, a script's
+      own `triggeraction`, `sendtoserver`, and player variables that are
+      not a GCHAR prop.
 
 Milestone 3 is next (`docs/PLAN.md`): a sample world whose NPCs only work
 when the NPC-server is running, lab-tested with real clients once
