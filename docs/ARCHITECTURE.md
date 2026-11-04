@@ -63,7 +63,7 @@ Every 0.1 s (the smallest useful `timeout`):
    | `SetFlag`, `UnsetFlag` on `server.` names | `SERVER_FLAG` |
    | `Message` | `NPC_PROPS` chat prop (`message` shows over the NPC) |
    | `Say2` | `PM` to the triggering player |
-   | `Command` `toweapons` or `addweapon` | `ADD_WEAPON` for that player. `addweapon` is not a command in `seihai-core` v0.0.3, so the statement is read from the engine's unknown-command log line |
+   | `Command` `toweapons` or `addweapon` | `ADD_WEAPON` for that player. `addweapon` is not a command in `seihai-core` (checked again at v0.0.5), so the statement is read from the engine's unknown-command log line |
    | `Command` `showcharacter` | `NPC_PROPS`: image `#c#`, gani `idle` |
    | `SetPlayerVar` `playerx`, `playery`, `playerdir`, `playerhearts` | `SET_PLAYER_PROPS` (props 15, 16, 17, 2, the GCHAR forms this server already reads) |
    | `say`, `play`, `playlooped`, `play2`, `stopsound`, `stopmidi`, `setshape`, `triggeraction`, `sendrpgmessage`, `sendtoserver`, other commands, other player variables, flags that are not `server.` | log once, unsupported. No link message for them |
