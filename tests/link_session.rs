@@ -438,6 +438,8 @@ if (playerenters) {
   say 1;
   setshape 1,32,16;
   triggeraction 10,20,ring,a b;
+  playerrupees = 300;
+  playerbombs = 7;
   sendrpgmessage hi;
   addweapon Sword;
 }
@@ -603,6 +605,21 @@ SCRIPTEND
                 if action == b"ring" && params == b"a b"
         )),
         "triggeraction missing in {got:?}"
+    );
+    // Rupees as a GINT3, bombs as a GCHAR.
+    assert!(
+        got.contains(&Message::SetPlayerProps {
+            player_id: 2,
+            props: vec![3 + 0x20, 0x20, 0x22, 0x4c],
+        }),
+        "playerrupees missing in {got:?}"
+    );
+    assert!(
+        got.contains(&Message::SetPlayerProps {
+            player_id: 2,
+            props: vec![5 + 0x20, 7 + 0x20],
+        }),
+        "playerbombs missing in {got:?}"
     );
     assert!(
         got.iter()

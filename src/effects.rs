@@ -434,6 +434,11 @@ impl Outbound {
             "playery" => prop_byte(16, half_gchar(value)),
             "playerdir" => prop_byte(17, value.rem_euclid(4.0).floor() as u8),
             "playerhearts" => prop_byte(2, half_gchar(value)),
+            // RUPEESCOUNT (3) is a GINT3; ARROWSCOUNT (4) and BOMBSCOUNT (5)
+            // are GCHARs, the forms the client reads them in.
+            "playerrupees" => prop_gint3(3, value),
+            "playerdarts" => prop_byte(4, count_gchar(value)),
+            "playerbombs" => prop_byte(5, count_gchar(value)),
             other => {
                 return self.skip(
                     &format!("player var {other}"),
@@ -572,6 +577,23 @@ fn prop_head(name: &str) -> Vec<u8> {
 
 fn prop_byte(id: u8, value: u8) -> Vec<u8> {
     vec![id + 0x20, value.min(223) + 0x20]
+}
+
+/// A count as one GCHAR (0 to 223).
+fn count_gchar(v: f64) -> u8 {
+    v.round().clamp(0.0, 223.0) as u8
+}
+
+/// A prop whose value is a GINT3: three 7-bit groups, high first, each
+/// plus 0x20 (0 to 2097151).
+fn prop_gint3(id: u8, v: f64) -> Vec<u8> {
+    let n = v.round().clamp(0.0, 2_097_151.0) as u32;
+    vec![
+        id + 0x20,
+        ((n >> 14) & 0x7F) as u8 + 0x20,
+        ((n >> 7) & 0x7F) as u8 + 0x20,
+        (n & 0x7F) as u8 + 0x20,
+    ]
 }
 
 fn prop_text(id: u8, text: &str) -> Vec<u8> {
@@ -1172,12 +1194,49 @@ mod tests {
         let rupees = out.map(
             &Effect::SetPlayerVar {
                 name: "playerrupees".into(),
-                value: 4.0,
+                value: 300.0,
             },
             &ctx_player(2),
         );
-        assert!(rupees.messages.is_empty());
-        assert!(rupees.notes[0].contains("unsupported"));
+        let Message::SetPlayerProps { props, .. } = &rupees.messages[0] else {
+            panic!("{:?}", rupees.messages);
+        };
+        // 300 = 2 * 128 + 44: GINT3 bytes 0x20, 0x22, 0x4c.
+        assert_eq!(props, &vec![3 + 0x20, 0x20, 0x22, 0x4c]);
+        let parsed = parse_player_props(props);
+        assert_eq!(parsed[0].id, 3);
+        assert_eq!(parsed[0].raw, vec![0x20, 0x22, 0x4c]);
+        for (name, id, value, want) in [
+            ("playerdarts", 4, 12.0, 12),
+            ("playerbombs", 5, 300.0, 223),
+            ("playerbombs", 5, -3.0, 0),
+        ] {
+            let m = out.map(
+                &Effect::SetPlayerVar {
+                    name: name.into(),
+                    value,
+                },
+                &ctx_player(2),
+            );
+            let Message::SetPlayerProps { props, .. } = &m.messages[0] else {
+                panic!("{name}: {:?}", m.messages);
+            };
+            let parsed = parse_player_props(props);
+            assert_eq!(
+                (parsed[0].id, parsed[0].gchar()),
+                (id, Some(want)),
+                "{name}"
+            );
+        }
+        let sword = out.map(
+            &Effect::SetPlayerVar {
+                name: "playerswordpower".into(),
+                value: 2.0,
+            },
+            &ctx_player(2),
+        );
+        assert!(sword.messages.is_empty());
+        assert!(sword.notes[0].contains("unsupported"));
     }
 
     #[test]
