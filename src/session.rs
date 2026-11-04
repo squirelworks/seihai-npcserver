@@ -455,6 +455,24 @@ fn handle(
             log,
             "PM from the gserver is ignored",
         ),
+        Message::PlaySound { .. } => note_once(
+            seen_unknown,
+            link::id::PLAY_SOUND,
+            log,
+            "PLAY_SOUND from the gserver is ignored",
+        ),
+        Message::StopSound { .. } => note_once(
+            seen_unknown,
+            link::id::STOP_SOUND,
+            log,
+            "STOP_SOUND from the gserver is ignored",
+        ),
+        Message::StopMidi { .. } => note_once(
+            seen_unknown,
+            link::id::STOP_MIDI,
+            log,
+            "STOP_MIDI from the gserver is ignored",
+        ),
         Message::Ping { nonce } => out.push(Message::Pong { nonce }),
         Message::Pong { .. } => {}
         Message::Bye { reason } => {

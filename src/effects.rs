@@ -31,6 +31,8 @@ pub struct Ctx {
     pub hearts: f64,
     /// Where a `setlevel` with no coordinates should put the player.
     pub player_xy: Option<(f64, f64)>,
+    /// The level the script runs in (sounds play there).
+    pub level: Vec<u8>,
 }
 
 /// Link messages for one effect, plus lines to log (each skip once).
@@ -147,6 +149,16 @@ impl Outbound {
             Effect::Say2 { text } => self.pm(ctx, text),
             Effect::SetPlayerVar { name, value } => self.player_var(ctx, name, *value),
             Effect::Command { name, args, .. } => self.command(ctx, name, args),
+            Effect::Play {
+                file, looped, at, ..
+            } => self.play(ctx, effect, file, *looped, *at),
+            Effect::StopSound { file } => Mapped::one(Message::StopSound {
+                level: ctx.level.clone(),
+                file: latin1_bytes(file),
+            }),
+            Effect::StopMidi => Mapped::one(Message::StopMidi {
+                level: ctx.level.clone(),
+            }),
             other => {
                 let key = skip_key(other);
                 let line = format!("{key} has no link message, unsupported");
@@ -290,6 +302,32 @@ impl Outbound {
             level: latin1_bytes(&level),
             x: half_u16(x),
             y: half_u16(y),
+        })
+    }
+
+    /// `play`, `playlooped` (at the NPC) and `play2` (at the point it names).
+    /// The gserver plays it for the players in the script's level.
+    fn play(
+        &mut self,
+        ctx: &Ctx,
+        effect: &Effect,
+        file: &str,
+        looped: bool,
+        at: Option<(f64, f64)>,
+    ) -> Mapped {
+        let Some((x, y)) = at.or(ctx.npc_xy) else {
+            let kind = skip_key(effect);
+            return self.skip(
+                &format!("{kind}-no-pos"),
+                &format!("{kind} has no position, not sent"),
+            );
+        };
+        Mapped::one(Message::PlaySound {
+            level: ctx.level.clone(),
+            file: latin1_bytes(file),
+            x: half_u16(x),
+            y: half_u16(y),
+            looped,
         })
     }
 
@@ -619,6 +657,7 @@ mod tests {
             player: None,
             hearts: 3.0,
             player_xy: None,
+            level: b"a.nw".to_vec(),
         }
     }
 
@@ -629,6 +668,7 @@ mod tests {
             player: Some(id),
             hearts: 2.5,
             player_xy: Some((10.0, 12.0)),
+            level: b"a.nw".to_vec(),
         }
     }
 
@@ -754,14 +794,14 @@ mod tests {
     #[test]
     fn unmapped_effects_are_logged_once() {
         let mut out = Outbound::default();
-        let play = Effect::Play {
+        let shape = Effect::SetShape {
             obj: 0,
-            file: "jump.wav".into(),
-            looped: false,
-            at: None,
+            kind: 1,
+            w: 2.0,
+            h: 2.0,
         };
-        let first = out.map(&play, &ctx_npc(1));
-        let second = out.map(&play, &ctx_npc(1));
+        let first = out.map(&shape, &ctx_npc(1));
+        let second = out.map(&shape, &ctx_npc(1));
         assert!(first.messages.is_empty());
         assert_eq!(first.notes.len(), 1);
         assert!(first.notes[0].contains("unsupported"), "{:?}", first.notes);
@@ -786,23 +826,8 @@ mod tests {
         assert!(cmd.notes[0].contains("lay"));
         assert!(cmd.notes[0].contains("unsupported"));
         for (effect, key) in [
-            (
-                Effect::StopSound {
-                    file: "a.wav".into(),
-                },
-                "stopsound",
-            ),
-            (Effect::StopMidi, "stopmidi"),
             (Effect::SaySign { index: 1 }, "say"),
-            (
-                Effect::Play {
-                    obj: 0,
-                    file: "m.mid".into(),
-                    looped: true,
-                    at: None,
-                },
-                "playlooped",
-            ),
+            (Effect::SendToServer { text: "hi".into() }, "sendtoserver"),
         ] {
             let mapped = out.map(&effect, &ctx_player(1));
             assert!(mapped.messages.is_empty(), "{key}: {:?}", mapped.messages);
@@ -815,6 +840,119 @@ mod tests {
                 mapped.notes
             );
         }
+    }
+
+    #[test]
+    fn sounds_are_play_sound_stop_sound_and_stop_midi() {
+        let mut out = Outbound::default();
+        let play = out.map(
+            &Effect::Play {
+                obj: 0,
+                file: "jump.wav".into(),
+                looped: false,
+                at: None,
+            },
+            &ctx_npc(5),
+        );
+        assert_eq!(
+            play.messages,
+            vec![Message::PlaySound {
+                level: b"a.nw".to_vec(),
+                file: b"jump.wav".to_vec(),
+                x: 60,
+                y: 62,
+                looped: false,
+            }]
+        );
+        let looped = out.map(
+            &Effect::Play {
+                obj: 0,
+                file: "town.mid".into(),
+                looped: true,
+                at: None,
+            },
+            &ctx_npc(5),
+        );
+        assert!(
+            matches!(
+                &looped.messages[..],
+                [Message::PlaySound {
+                    looped: true,
+                    x: 60,
+                    y: 62,
+                    ..
+                }]
+            ),
+            "{:?}",
+            looped.messages
+        );
+        // play2 names its own point; the volume is not in the effect.
+        let play2 = out.map(
+            &Effect::Play {
+                obj: 0,
+                file: "bell.wav".into(),
+                looped: false,
+                at: Some((10.5, 4.0)),
+            },
+            &ctx_npc(5),
+        );
+        assert!(
+            matches!(
+                &play2.messages[..],
+                [Message::PlaySound {
+                    x: 21,
+                    y: 8,
+                    looped: false,
+                    ..
+                }]
+            ),
+            "{:?}",
+            play2.messages
+        );
+        let stop = out.map(
+            &Effect::StopSound {
+                file: "town.mid".into(),
+            },
+            &ctx_npc(5),
+        );
+        assert_eq!(
+            stop.messages,
+            vec![Message::StopSound {
+                level: b"a.nw".to_vec(),
+                file: b"town.mid".to_vec(),
+            }]
+        );
+        let midi = out.map(&Effect::StopMidi, &ctx_npc(5));
+        assert_eq!(
+            midi.messages,
+            vec![Message::StopMidi {
+                level: b"a.nw".to_vec(),
+            }]
+        );
+
+        // stopsound and stopmidi have no object; the level is enough.
+        let from_player = out.map(&Effect::StopMidi, &ctx_player(1));
+        assert_eq!(from_player.messages.len(), 1, "{:?}", from_player.notes);
+
+        // play from outside an NPC, with no point of its own, has nowhere to play.
+        let nowhere = Effect::Play {
+            obj: 0,
+            file: "a.wav".into(),
+            looped: false,
+            at: None,
+        };
+        let first = out.map(&nowhere, &ctx_player(1));
+        let again = out.map(&nowhere, &ctx_player(1));
+        assert!(first.messages.is_empty(), "{:?}", first.messages);
+        assert!(
+            first
+                .notes
+                .iter()
+                .any(|n| n.contains("play has no position")),
+            "{:?}",
+            first.notes
+        );
+        assert!(again.notes.is_empty(), "{:?}", again.notes);
     }
 
     #[test]

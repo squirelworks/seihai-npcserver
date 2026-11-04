@@ -151,14 +151,14 @@ fn unknown_messages_are_skipped() {
     script.updates.insert(
         0,
         Message::Unknown {
-            id: 0x48,
+            id: 0x7f,
             data: vec![9; 10],
         },
     );
     script.updates.insert(
         1,
         Message::Unknown {
-            id: 0x48,
+            id: 0x7f,
             data: vec![],
         },
     );
@@ -168,7 +168,7 @@ fn unknown_messages_are_skipped() {
     assert_eq!(
         lines
             .iter()
-            .filter(|l| l.contains("unknown message 0x48"))
+            .filter(|l| l.contains("unknown message 0x7f"))
             .count(),
         1
     );
@@ -436,6 +436,7 @@ if (playerenters) {
   stopsound jump.wav;
   stopmidi;
   say 1;
+  setshape 1,2,2;
   addweapon Sword;
 }
 if (playerchats) { message #c/#v(server.door); }
@@ -558,6 +559,29 @@ SCRIPTEND
         )),
         "addweapon missing in {got:?}"
     );
+    // Sounds go out for the NPC's level, at the NPC (tile 30, 30).
+    let level = b"onlinestartlocal.nw".to_vec();
+    assert!(
+        got.contains(&Message::PlaySound {
+            level: level.clone(),
+            file: b"jump.wav".to_vec(),
+            x: 60,
+            y: 60,
+            looped: false,
+        }),
+        "play missing in {got:?}"
+    );
+    assert!(
+        got.contains(&Message::StopSound {
+            level: level.clone(),
+            file: b"jump.wav".to_vec(),
+        }),
+        "stopsound missing in {got:?}"
+    );
+    assert!(
+        got.contains(&Message::StopMidi { level }),
+        "stopmidi missing in {got:?}"
+    );
     assert!(
         got.iter()
             .any(|m| npc_image_gani(m) == Some(("#c#".into(), "idle".into()))),
@@ -579,11 +603,17 @@ SCRIPTEND
     );
 
     let text = lines.join("\n");
-    for unsupported in ["play", "stopsound", "stopmidi", "say"] {
+    for unsupported in ["say", "setshape"] {
         let hits = text
             .matches(&format!("{unsupported} has no link message"))
             .count();
         assert_eq!(hits, 1, "{unsupported} should be logged once in:\n{text}");
+    }
+    for sent in ["play", "stopsound", "stopmidi"] {
+        assert!(
+            !text.contains(&format!("{sent} has no link message")),
+            "{sent} is sent now, not logged:\n{text}"
+        );
     }
     assert!(text.contains("server flags: 1 entries"), "{text}");
 }
