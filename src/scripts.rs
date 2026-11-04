@@ -698,6 +698,54 @@ mod tests {
     }
 
     #[test]
+    fn a_scripts_triggeraction_reaches_the_npcs_under_the_point() {
+        let mut s = Scripts::new(Era::V21);
+        let bell = NpcDef {
+            id: 8,
+            x: 10.0,
+            y: 10.0,
+            script: "if (actionring) { message rang #p(0)-#p(1); }".into(),
+            ..npc("")
+        };
+        s.load(&[
+            npc("if (created) { triggeraction 10.5,10.5,Ring,red,door; }"),
+            bell,
+        ]);
+        let started = s.start();
+        assert!(
+            started.messages.iter().any(|m| matches!(
+                m,
+                Message::NpcTriggerAction { action, params, .. }
+                    if action == b"ring" && params == b"red,door"
+            )),
+            "{:?}",
+            started.messages
+        );
+        let texts: Vec<String> = started.messages.iter().filter_map(message_of).collect();
+        assert_eq!(texts, ["rang red-door"], "{:?}", started.messages);
+    }
+
+    #[test]
+    fn a_triggeraction_that_answers_itself_is_cut_off() {
+        let mut s = Scripts::new(Era::V21);
+        s.load(&[npc(
+            "if (created) { triggeraction 30,30,ring,; }\nif (actionring) { triggeraction 30,30,ring,; }",
+        )]);
+        let started = s.start();
+        let sent = started
+            .messages
+            .iter()
+            .filter(|m| matches!(m, Message::NpcTriggerAction { .. }))
+            .count();
+        // One from `created`, then one per queued call until the cap.
+        assert!((2..=1001).contains(&sent), "{sent}");
+        assert!(
+            s.take_log().iter().any(|(_, l)| l.contains("cut off")),
+            "the engine should log the cut-off"
+        );
+    }
+
+    #[test]
     fn pm_flags_and_trigger_run() {
         let mut s = Scripts::new(Era::V21);
         s.load(&[npc(

@@ -57,9 +57,12 @@ Work in this order, one branch and pull request each. The design is in
       `playerbombs` are `SET_PLAYER_PROPS`: prop 3 as a GINT3, props 4 and
       5 as GCHARs. No new link message.
 
-- [ ] **Server NPCs hearing each other's `triggeraction`.** It is not fired
-      on this server's own NPCs yet. Doing that needs a queue so a trigger
-      that answers a trigger runs on the next tick, not in a loop.
+- [x] **Server NPCs hearing each other's `triggeraction`.** Already done
+      by `seihai-core`'s engine inside each level: the NPCs under the point
+      get `action<name>` with the params. A trigger that answers itself is
+      cut off after 1000 queued calls in one step, and every round still
+      sends its effects (and an `NPC_TRIGGER_ACTION`) to the gserver. A test
+      pins both.
 
 - [ ] **The rest of the logged-only effects**, one PR per group, each added
       to `PROTOCOL.md` here and in `seihai-gserver`: `sendtoserver`, and
