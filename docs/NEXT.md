@@ -37,7 +37,7 @@ Work in this order, one branch and pull request each. The design is in
       `action<name>`. `#n(id)` expands from `World.players` when that id
       is online. Still unsupported, logged once, because this link has no
       message for them: `say`, `play`, `playlooped`, `play2`, `stopsound`,
-      `stopmidi` (sounds since added, below), `setshape`, a script's own `triggeraction`,
+      `stopmidi`, `setshape` (these since added, below), a script's own `triggeraction`,
       `sendrpgmessage`, `sendtoserver`, other commands, and player
       variables that are not a GCHAR prop (`playerrupees` and the rest).
 
@@ -47,8 +47,11 @@ Work in this order, one branch and pull request each. The design is in
       gserver receives them in the loopback test. `play2`'s volume is not
       carried. The `seihai-gserver` side still has to apply them.
 
+- [x] **`setshape`.** Sent as `NPC_SHAPE` (`0x4B`): kind, width and height
+      in pixels. The NPC prop stream has no shape prop.
+
 - [ ] **The rest of the logged-only effects**, one PR per group, each added
-      to `PROTOCOL.md` here and in `seihai-gserver`: `setshape`, a script's
+      to `PROTOCOL.md` here and in `seihai-gserver`: a script's
       own `triggeraction`, `sendtoserver`, and player variables that are
       not a GCHAR prop.
 

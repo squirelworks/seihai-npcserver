@@ -52,6 +52,7 @@ pub mod id {
     pub const PLAY_SOUND: u8 = 0x48;
     pub const STOP_SOUND: u8 = 0x49;
     pub const STOP_MIDI: u8 = 0x4A;
+    pub const NPC_SHAPE: u8 = 0x4B;
 }
 
 /// One link message.
@@ -169,6 +170,13 @@ pub enum Message {
     StopMidi {
         level: Vec<u8>,
     },
+    /// `setshape`: the NPC's blocking box, in pixels from its top left.
+    NpcShape {
+        npc_id: u32,
+        kind: u8,
+        w: u16,
+        h: u16,
+    },
     /// A message this code does not know. Kept so it can be logged and skipped.
     Unknown {
         id: u8,
@@ -206,6 +214,7 @@ impl Message {
             Message::PlaySound { .. } => id::PLAY_SOUND,
             Message::StopSound { .. } => id::STOP_SOUND,
             Message::StopMidi { .. } => id::STOP_MIDI,
+            Message::NpcShape { .. } => id::NPC_SHAPE,
             Message::Unknown { id, .. } => *id,
         }
     }
@@ -346,6 +355,12 @@ impl Message {
                 put_str(&mut d, file)?;
             }
             Message::StopMidi { level } => put_str(&mut d, level)?,
+            Message::NpcShape { npc_id, kind, w, h } => {
+                d.extend_from_slice(&npc_id.to_be_bytes());
+                d.push(*kind);
+                d.extend_from_slice(&w.to_be_bytes());
+                d.extend_from_slice(&h.to_be_bytes());
+            }
             Message::Unknown { data, .. } => d.extend_from_slice(data),
         }
         let len = u32::try_from(d.len()).map_err(|_| invalid("message over 4 GiB"))?;
@@ -463,6 +478,12 @@ impl Message {
                 file: r.str()?,
             },
             id::STOP_MIDI => Message::StopMidi { level: r.str()? },
+            id::NPC_SHAPE => Message::NpcShape {
+                npc_id: r.u32()?,
+                kind: r.byte()?,
+                w: r.u16()?,
+                h: r.u16()?,
+            },
             other => Message::Unknown {
                 id: other,
                 data: data.to_vec(),
@@ -754,6 +775,12 @@ mod tests {
             },
             Message::StopMidi {
                 level: b"a.nw".to_vec(),
+            },
+            Message::NpcShape {
+                npc_id: 7,
+                kind: 1,
+                w: 32,
+                h: 48,
             },
             Message::Unknown {
                 id: 0x99,

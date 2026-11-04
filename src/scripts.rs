@@ -619,7 +619,7 @@ mod tests {
         let mut s = Scripts::new(Era::V21);
         s.set_nicks(BTreeMap::from([(2, "test205".into())]));
         s.load(&[npc(
-            "if (playerenters) { say2 Hello #n(2); toweapons Bow; showcharacter; play jump.wav; setshape 1,2,2; addweapon Sword; }",
+            "if (playerenters) { say2 Hello #n(2); toweapons Bow; showcharacter; play jump.wav; setshape 1,32,32; sendrpgmessage hi; addweapon Sword; }",
         )]);
         let _ = s.start();
         let player = Player {
@@ -664,9 +664,22 @@ mod tests {
             produced
                 .notes
                 .iter()
-                .any(|n| n.contains("setshape") && n.contains("unsupported")),
+                .any(|n| n.contains("sendrpgmessage") && n.contains("unsupported")),
             "{:?}",
             produced.notes
+        );
+        assert!(
+            produced.messages.iter().any(|m| matches!(
+                m,
+                Message::NpcShape {
+                    npc_id: 7,
+                    kind: 1,
+                    w: 32,
+                    h: 32
+                }
+            )),
+            "{:?}",
+            produced.messages
         );
         assert!(
             produced.messages.iter().any(|m| matches!(
@@ -678,8 +691,8 @@ mod tests {
         );
         let again = s.on_player(2, &player, "playerenters");
         assert!(
-            again.notes.iter().all(|n| !n.contains("setshape")),
-            "setshape should be logged once: {:?}",
+            again.notes.iter().all(|n| !n.contains("sendrpgmessage")),
+            "sendrpgmessage should be logged once: {:?}",
             again.notes
         );
     }

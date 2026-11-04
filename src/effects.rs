@@ -156,6 +156,15 @@ impl Outbound {
                 level: ctx.level.clone(),
                 file: latin1_bytes(file),
             }),
+            Effect::SetShape { kind, w, h, .. } => match ctx.npc {
+                Some(npc_id) => Mapped::one(Message::NpcShape {
+                    npc_id,
+                    kind: u8::try_from(*kind).unwrap_or(1),
+                    w: w.round().clamp(0.0, 65535.0) as u16,
+                    h: h.round().clamp(0.0, 65535.0) as u16,
+                }),
+                None => self.skip("setshape-no-npc", "setshape has no NPC id, not sent"),
+            },
             Effect::StopMidi => Mapped::one(Message::StopMidi {
                 level: ctx.level.clone(),
             }),
@@ -794,14 +803,9 @@ mod tests {
     #[test]
     fn unmapped_effects_are_logged_once() {
         let mut out = Outbound::default();
-        let shape = Effect::SetShape {
-            obj: 0,
-            kind: 1,
-            w: 2.0,
-            h: 2.0,
-        };
-        let first = out.map(&shape, &ctx_npc(1));
-        let second = out.map(&shape, &ctx_npc(1));
+        let rpg = Effect::RpgMessage { text: "hi".into() };
+        let first = out.map(&rpg, &ctx_npc(1));
+        let second = out.map(&rpg, &ctx_npc(1));
         assert!(first.messages.is_empty());
         assert_eq!(first.notes.len(), 1);
         assert!(first.notes[0].contains("unsupported"), "{:?}", first.notes);
@@ -949,6 +953,47 @@ mod tests {
                 .notes
                 .iter()
                 .any(|n| n.contains("play has no position")),
+            "{:?}",
+            first.notes
+        );
+        assert!(again.notes.is_empty(), "{:?}", again.notes);
+    }
+
+    #[test]
+    fn setshape_is_npc_shape() {
+        let mut out = Outbound::default();
+        let shape = out.map(
+            &Effect::SetShape {
+                obj: 0,
+                kind: 1,
+                w: 32.0,
+                h: 47.6,
+            },
+            &ctx_npc(3),
+        );
+        assert_eq!(
+            shape.messages,
+            vec![Message::NpcShape {
+                npc_id: 3,
+                kind: 1,
+                w: 32,
+                h: 48,
+            }]
+        );
+        let no_npc = Effect::SetShape {
+            obj: 0,
+            kind: 1,
+            w: 2.0,
+            h: 2.0,
+        };
+        let first = out.map(&no_npc, &ctx_player(1));
+        let again = out.map(&no_npc, &ctx_player(1));
+        assert!(first.messages.is_empty(), "{:?}", first.messages);
+        assert!(
+            first
+                .notes
+                .iter()
+                .any(|n| n.contains("setshape has no NPC id")),
             "{:?}",
             first.notes
         );
