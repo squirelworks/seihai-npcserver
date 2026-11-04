@@ -436,7 +436,8 @@ if (playerenters) {
   stopsound jump.wav;
   stopmidi;
   say 1;
-  setshape 1,2,2;
+  setshape 1,32,16;
+  sendrpgmessage hi;
   addweapon Sword;
 }
 if (playerchats) { message #c/#v(server.door); }
@@ -583,6 +584,18 @@ SCRIPTEND
         "stopmidi missing in {got:?}"
     );
     assert!(
+        got.iter().any(|m| matches!(
+            m,
+            Message::NpcShape {
+                kind: 1,
+                w: 32,
+                h: 16,
+                ..
+            }
+        )),
+        "setshape missing in {got:?}"
+    );
+    assert!(
         got.iter()
             .any(|m| npc_image_gani(m) == Some(("#c#".into(), "idle".into()))),
         "showcharacter missing in {got:?}"
@@ -603,13 +616,13 @@ SCRIPTEND
     );
 
     let text = lines.join("\n");
-    for unsupported in ["say", "setshape"] {
+    for unsupported in ["say", "sendrpgmessage"] {
         let hits = text
             .matches(&format!("{unsupported} has no link message"))
             .count();
         assert_eq!(hits, 1, "{unsupported} should be logged once in:\n{text}");
     }
-    for sent in ["play", "stopsound", "stopmidi"] {
+    for sent in ["play", "stopsound", "stopmidi", "setshape"] {
         assert!(
             !text.contains(&format!("{sent} has no link message")),
             "{sent} is sent now, not logged:\n{text}"

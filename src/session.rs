@@ -473,6 +473,12 @@ fn handle(
             log,
             "STOP_MIDI from the gserver is ignored",
         ),
+        Message::NpcShape { .. } => note_once(
+            seen_unknown,
+            link::id::NPC_SHAPE,
+            log,
+            "NPC_SHAPE from the gserver is ignored",
+        ),
         Message::Ping { nonce } => out.push(Message::Pong { nonce }),
         Message::Pong { .. } => {}
         Message::Bye { reason } => {
