@@ -347,7 +347,8 @@ impl Outbound {
     }
 
     /// A script's own `triggeraction`: sent for the gserver to deliver in
-    /// the script's level. It is not fired on this server's own NPCs.
+    /// the script's level. `seihai-core`'s engine has already fired it on
+    /// this server's own NPCs in that level.
     fn trigger(&mut self, ctx: &Ctx, x: f64, y: f64, action: &str, params: &str) -> Mapped {
         let action = action.trim();
         if action.is_empty() {

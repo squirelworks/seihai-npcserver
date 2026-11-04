@@ -195,11 +195,12 @@ for blocking on its side; whether a client generation needs to hear about it
 is the gserver's side of the link.
 
 `NPC_TRIGGER_ACTION` is `triggeraction x,y,action,params` run by a server-side
-script in `level`. `action` is sent as written (the receiver adds `action` in
-front for the event name, as with `TRIGGER_ACTION`); `params` is the rest of
-the statement as one string. The NPC-server does not fire it on its own NPCs,
-and the gserver should not send it back as `TRIGGER_ACTION`. Delivering it to
-what else listens in that level is the gserver's side of the link.
+script in `level`. `action` is the name in lower case, without the `action`
+prefix the event name adds; `params` is the rest of the statement as one
+string. The NPC-server has already fired it on its own NPCs in that level (the
+script engine does that itself), so the gserver should not send it back as
+`TRIGGER_ACTION`. Delivering it to what else listens in that level is the
+gserver's side of the link.
 
 ### 0x80 to 0xFF: NPC Control (*reserved*)
 
