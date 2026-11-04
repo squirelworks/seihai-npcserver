@@ -69,7 +69,8 @@ Every 0.1 s (the smallest useful `timeout`):
    | `Play` (`play`, `playlooped`, `play2`) | `PLAY_SOUND` for the script's level, at the NPC or at `play2`'s point. `play2`'s volume is dropped |
    | `StopSound`, `StopMidi` | `STOP_SOUND`, `STOP_MIDI` for the script's level |
    | `SetShape` | `NPC_SHAPE` (kind, width and height in pixels) |
-   | `say`, `triggeraction`, `sendrpgmessage`, `sendtoserver`, other commands, other player variables, flags that are not `server.` | log once, unsupported. No link message for them |
+   | `TriggerAction` (a script's own `triggeraction`) | `NPC_TRIGGER_ACTION` for the script's level. Not fired on this server's own NPCs |
+   | `say`, `sendrpgmessage`, `sendtoserver`, other commands, other player variables, flags that are not `server.` | log once, unsupported. No link message for them |
 
 4. **Done.** Before `playerenters` / `playerleaves`, the level's `PlayerView`
    is filled from `world::Player` (nick, account, position, direction, hearts,

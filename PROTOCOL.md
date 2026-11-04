@@ -146,8 +146,9 @@ other rows when a script effect maps onto them (`docs/ARCHITECTURE.md`).
 `addweapon` are sent as `ADD_WEAPON`. `showcharacter` is `NPC_PROPS` with
 image `#c#` and gani `idle`. `play`, `playlooped` and `play2` are
 `PLAY_SOUND`; `stopsound` is `STOP_SOUND` and `stopmidi` is `STOP_MIDI`.
-`setshape` is `NPC_SHAPE`. A script command with no message in this table is
-logged once and not sent. `0x4C` to `0x7F` stay reserved.
+`setshape` is `NPC_SHAPE`, and a script's own `triggeraction` is
+`NPC_TRIGGER_ACTION`. A script command with no message in this table is
+logged once and not sent. `0x4D` to `0x7F` stay reserved.
 
 | Id | Name | Fields |
 |---|---|---|
@@ -163,6 +164,7 @@ logged once and not sent. `0x4C` to `0x7F` stay reserved.
 | `0x49` | `STOP_SOUND` | `level: str`, `file: str` |
 | `0x4A` | `STOP_MIDI` | `level: str` |
 | `0x4B` | `NPC_SHAPE` | `npc_id: u32`, `kind: u8`, `w: u16`, `h: u16` (pixels) |
+| `0x4C` | `NPC_TRIGGER_ACTION` | `level: str`, `x: u16`, `y: u16` (half tiles), `action: str`, `params: str` |
 
 `npc_id` is the NPC-server's id for a server-side NPC, unique while the link is
 up. NPC prop streams use the same encoding the gserver sends a 2.22 client in
@@ -191,6 +193,13 @@ script's first argument; the script engine only sends 0 and 1. The NPC prop
 stream has no shape prop, so this is a message of its own. The gserver uses it
 for blocking on its side; whether a client generation needs to hear about it
 is the gserver's side of the link.
+
+`NPC_TRIGGER_ACTION` is `triggeraction x,y,action,params` run by a server-side
+script in `level`. `action` is sent as written (the receiver adds `action` in
+front for the event name, as with `TRIGGER_ACTION`); `params` is the rest of
+the statement as one string. The NPC-server does not fire it on its own NPCs,
+and the gserver should not send it back as `TRIGGER_ACTION`. Delivering it to
+what else listens in that level is the gserver's side of the link.
 
 ### 0x80 to 0xFF: NPC Control (*reserved*)
 
@@ -238,3 +247,4 @@ With `npcserver = auto` the gserver:
 | 1 | 2026-11-01 | Milestone 2 messages (`0x24` to `0x26`, `0x40` to `0x47`) specified. No version bump: the ids were reserved. This copy only; `seihai-gserver` still has the earlier draft until its side of the link is written. |
 | 1 | 2026-11-04 | Sound messages `0x48` to `0x4A` specified. No version bump: the ids were reserved. This copy only, as above. |
 | 1 | 2026-11-04 | `NPC_SHAPE` (`0x4B`) specified. No version bump: the id was reserved. This copy only, as above. |
+| 1 | 2026-11-04 | `NPC_TRIGGER_ACTION` (`0x4C`) specified. No version bump: the id was reserved. This copy only, as above. |

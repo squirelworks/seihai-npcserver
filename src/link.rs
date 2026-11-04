@@ -53,6 +53,7 @@ pub mod id {
     pub const STOP_SOUND: u8 = 0x49;
     pub const STOP_MIDI: u8 = 0x4A;
     pub const NPC_SHAPE: u8 = 0x4B;
+    pub const NPC_TRIGGER_ACTION: u8 = 0x4C;
 }
 
 /// One link message.
@@ -177,6 +178,14 @@ pub enum Message {
         w: u16,
         h: u16,
     },
+    /// A script's own `triggeraction x,y,action,params`.
+    NpcTriggerAction {
+        level: Vec<u8>,
+        x: u16,
+        y: u16,
+        action: Vec<u8>,
+        params: Vec<u8>,
+    },
     /// A message this code does not know. Kept so it can be logged and skipped.
     Unknown {
         id: u8,
@@ -215,6 +224,7 @@ impl Message {
             Message::StopSound { .. } => id::STOP_SOUND,
             Message::StopMidi { .. } => id::STOP_MIDI,
             Message::NpcShape { .. } => id::NPC_SHAPE,
+            Message::NpcTriggerAction { .. } => id::NPC_TRIGGER_ACTION,
             Message::Unknown { id, .. } => *id,
         }
     }
@@ -361,6 +371,19 @@ impl Message {
                 d.extend_from_slice(&w.to_be_bytes());
                 d.extend_from_slice(&h.to_be_bytes());
             }
+            Message::NpcTriggerAction {
+                level,
+                x,
+                y,
+                action,
+                params,
+            } => {
+                put_str(&mut d, level)?;
+                d.extend_from_slice(&x.to_be_bytes());
+                d.extend_from_slice(&y.to_be_bytes());
+                put_str(&mut d, action)?;
+                put_str(&mut d, params)?;
+            }
             Message::Unknown { data, .. } => d.extend_from_slice(data),
         }
         let len = u32::try_from(d.len()).map_err(|_| invalid("message over 4 GiB"))?;
@@ -483,6 +506,13 @@ impl Message {
                 kind: r.byte()?,
                 w: r.u16()?,
                 h: r.u16()?,
+            },
+            id::NPC_TRIGGER_ACTION => Message::NpcTriggerAction {
+                level: r.str()?,
+                x: r.u16()?,
+                y: r.u16()?,
+                action: r.str()?,
+                params: r.str()?,
             },
             other => Message::Unknown {
                 id: other,
@@ -781,6 +811,13 @@ mod tests {
                 kind: 1,
                 w: 32,
                 h: 48,
+            },
+            Message::NpcTriggerAction {
+                level: b"a.nw".to_vec(),
+                x: 21,
+                y: 41,
+                action: b"open".to_vec(),
+                params: b"red,door".to_vec(),
             },
             Message::Unknown {
                 id: 0x99,

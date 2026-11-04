@@ -37,7 +37,7 @@ Work in this order, one branch and pull request each. The design is in
       `action<name>`. `#n(id)` expands from `World.players` when that id
       is online. Still unsupported, logged once, because this link has no
       message for them: `say`, `play`, `playlooped`, `play2`, `stopsound`,
-      `stopmidi`, `setshape` (these since added, below), a script's own `triggeraction`,
+      `stopmidi`, `setshape`, a script's own `triggeraction` (these since added, below),
       `sendrpgmessage`, `sendtoserver`, other commands, and player
       variables that are not a GCHAR prop (`playerrupees` and the rest).
 
@@ -50,10 +50,16 @@ Work in this order, one branch and pull request each. The design is in
 - [x] **`setshape`.** Sent as `NPC_SHAPE` (`0x4B`): kind, width and height
       in pixels. The NPC prop stream has no shape prop.
 
+- [x] **A script's own `triggeraction`.** Sent as `NPC_TRIGGER_ACTION`
+      (`0x4C`) for the script's level, with the action and its params.
+
+- [ ] **Server NPCs hearing each other's `triggeraction`.** It is not fired
+      on this server's own NPCs yet. Doing that needs a queue so a trigger
+      that answers a trigger runs on the next tick, not in a loop.
+
 - [ ] **The rest of the logged-only effects**, one PR per group, each added
-      to `PROTOCOL.md` here and in `seihai-gserver`: a script's
-      own `triggeraction`, `sendtoserver`, and player variables that are
-      not a GCHAR prop.
+      to `PROTOCOL.md` here and in `seihai-gserver`: `sendtoserver`, and
+      player variables that are not a GCHAR prop.
 
 Milestone 3 is next (`docs/PLAN.md`): a sample world whose NPCs only work
 when the NPC-server is running, lab-tested with real clients once
