@@ -69,9 +69,12 @@ Work in this order, one branch and pull request each. The design is in
       image the gserver last sent for that player. With no image known,
       the bare power form.
 
-- [ ] **The rest of the logged-only effects**, one PR per group, each added
-      to `PROTOCOL.md` here and in `seihai-gserver`: `sendtoserver`, and
-      the player variables still logged (`playerhp`, the selected weapon).
+- [x] **The rest of the logged-only effects.** `playerhp` is
+      `SET_PLAYER_PROPS` prop 2, the same half-hearts value as
+      `playerhearts` (the reference server treats `hp` that way). `sendtoserver`
+      and setting the selected weapon stay logged and skipped on purpose:
+      the reference server's scripts have neither. Its `sendtonc` and
+      `sendtorc` could be a later item.
 
 Milestone 3 is next (`docs/PLAN.md`): a sample world whose NPCs only work
 when the NPC-server is running, lab-tested with real clients once
