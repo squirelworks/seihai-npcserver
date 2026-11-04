@@ -436,9 +436,9 @@ impl Outbound {
         }
     }
 
-    /// Writes the engine already turns into a GCHAR player prop. Rupees,
-    /// bombs, darts and sword or shield power are not that encoding, so
-    /// they stay unsupported.
+    /// Player variable writes, as `SET_PLAYER_PROPS` in the encoding the
+    /// client reads each prop in. Other player variables, the selected
+    /// weapon among them, stay unsupported.
     fn player_var(&mut self, ctx: &Ctx, name: &str, value: f64) -> Mapped {
         let Some(player_id) = ctx.player else {
             return self.skip(
@@ -450,7 +450,9 @@ impl Outbound {
             "playerx" => prop_byte(15, half_gchar(value)),
             "playery" => prop_byte(16, half_gchar(value)),
             "playerdir" => prop_byte(17, value.rem_euclid(4.0).floor() as u8),
-            "playerhearts" => prop_byte(2, half_gchar(value)),
+            // `playerhp` is the same value as `playerhearts`: half hearts
+            // in prop 2, read back as hearts.
+            "playerhearts" | "playerhp" => prop_byte(2, half_gchar(value)),
             // RUPEESCOUNT (3) is a GINT3; ARROWSCOUNT (4) and BOMBSCOUNT (5)
             // are GCHARs, the forms the client reads them in.
             "playerrupees" => prop_gint3(3, value),
@@ -1275,12 +1277,24 @@ mod tests {
         let hp = out.map(
             &Effect::SetPlayerVar {
                 name: "playerhp".into(),
+                value: 2.5,
+            },
+            &ctx_player(2),
+        );
+        let Message::SetPlayerProps { props, .. } = &hp.messages[0] else {
+            panic!("{:?}", hp.messages);
+        };
+        let parsed = parse_player_props(props);
+        assert_eq!((parsed[0].id, parsed[0].gchar()), (2, Some(5)));
+        let unknown = out.map(
+            &Effect::SetPlayerVar {
+                name: "playerglovepower".into(),
                 value: 2.0,
             },
             &ctx_player(2),
         );
-        assert!(hp.messages.is_empty());
-        assert!(hp.notes[0].contains("unsupported"));
+        assert!(unknown.messages.is_empty());
+        assert!(unknown.notes[0].contains("unsupported"));
     }
 
     #[test]
