@@ -437,6 +437,7 @@ if (playerenters) {
   stopmidi;
   say 1;
   setshape 1,32,16;
+  triggeraction 10,20,ring,a b;
   sendrpgmessage hi;
   addweapon Sword;
 }
@@ -596,6 +597,14 @@ SCRIPTEND
         "setshape missing in {got:?}"
     );
     assert!(
+        got.iter().any(|m| matches!(
+            m,
+            Message::NpcTriggerAction { x: 20, y: 40, action, params, .. }
+                if action == b"ring" && params == b"a b"
+        )),
+        "triggeraction missing in {got:?}"
+    );
+    assert!(
         got.iter()
             .any(|m| npc_image_gani(m) == Some(("#c#".into(), "idle".into()))),
         "showcharacter missing in {got:?}"
@@ -622,7 +631,7 @@ SCRIPTEND
             .count();
         assert_eq!(hits, 1, "{unsupported} should be logged once in:\n{text}");
     }
-    for sent in ["play", "stopsound", "stopmidi", "setshape"] {
+    for sent in ["play", "stopsound", "stopmidi", "setshape", "triggeraction"] {
         assert!(
             !text.contains(&format!("{sent} has no link message")),
             "{sent} is sent now, not logged:\n{text}"

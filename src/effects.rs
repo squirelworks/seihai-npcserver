@@ -165,6 +165,12 @@ impl Outbound {
                 }),
                 None => self.skip("setshape-no-npc", "setshape has no NPC id, not sent"),
             },
+            Effect::TriggerAction {
+                x,
+                y,
+                action,
+                params,
+            } => self.trigger(ctx, *x, *y, action, params),
             Effect::StopMidi => Mapped::one(Message::StopMidi {
                 level: ctx.level.clone(),
             }),
@@ -337,6 +343,25 @@ impl Outbound {
             x: half_u16(x),
             y: half_u16(y),
             looped,
+        })
+    }
+
+    /// A script's own `triggeraction`: sent for the gserver to deliver in
+    /// the script's level. It is not fired on this server's own NPCs.
+    fn trigger(&mut self, ctx: &Ctx, x: f64, y: f64, action: &str, params: &str) -> Mapped {
+        let action = action.trim();
+        if action.is_empty() {
+            return self.skip(
+                "triggeraction-empty",
+                "triggeraction has an empty action, not sent",
+            );
+        }
+        Mapped::one(Message::NpcTriggerAction {
+            level: ctx.level.clone(),
+            x: half_u16(x),
+            y: half_u16(y),
+            action: latin1_bytes(action),
+            params: latin1_bytes(&self.expand(params)),
         })
     }
 
@@ -953,6 +978,45 @@ mod tests {
                 .notes
                 .iter()
                 .any(|n| n.contains("play has no position")),
+            "{:?}",
+            first.notes
+        );
+        assert!(again.notes.is_empty(), "{:?}", again.notes);
+    }
+
+    #[test]
+    fn triggeraction_is_npc_trigger_action() {
+        let mut out = Outbound::default();
+        let sent = out.map(
+            &Effect::TriggerAction {
+                x: 10.5,
+                y: 20.5,
+                action: "open".into(),
+                params: "red,door".into(),
+            },
+            &ctx_npc(3),
+        );
+        assert_eq!(
+            sent.messages,
+            vec![Message::NpcTriggerAction {
+                level: b"a.nw".to_vec(),
+                x: 21,
+                y: 41,
+                action: b"open".to_vec(),
+                params: b"red,door".to_vec(),
+            }]
+        );
+        let empty = Effect::TriggerAction {
+            x: 1.0,
+            y: 1.0,
+            action: " ".into(),
+            params: String::new(),
+        };
+        let first = out.map(&empty, &ctx_npc(3));
+        let again = out.map(&empty, &ctx_npc(3));
+        assert!(first.messages.is_empty(), "{:?}", first.messages);
+        assert!(
+            first.notes.iter().any(|n| n.contains("empty action")),
             "{:?}",
             first.notes
         );

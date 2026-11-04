@@ -479,6 +479,12 @@ fn handle(
             log,
             "NPC_SHAPE from the gserver is ignored",
         ),
+        Message::NpcTriggerAction { .. } => note_once(
+            seen_unknown,
+            link::id::NPC_TRIGGER_ACTION,
+            log,
+            "NPC_TRIGGER_ACTION from the gserver is ignored",
+        ),
         Message::Ping { nonce } => out.push(Message::Pong { nonce }),
         Message::Pong { .. } => {}
         Message::Bye { reason } => {
