@@ -14,7 +14,7 @@
 //! SCRIPTEND
 //! ```
 //!
-//! TODO(milestone 2): also read GServer-v2 style `npcs/npc*.txt` files so
+//! TODO (open in `docs/NEXT.md`): also read GServer-v2 style `npcs/npc*.txt` files so
 //! existing worlds move over. Write that reader from the format as seen in
 //! files, not from GServer-v2's code (`AGENTS.md`).
 
