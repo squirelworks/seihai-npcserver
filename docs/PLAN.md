@@ -42,13 +42,14 @@ configure the link. Running it on another machine is the advanced option.
 
 1. Connect, authenticate, receive level lists and player props; log them.
    **Done** (link version 1 in `PROTOCOL.md`; lab run in
-   `docs/lab/2026-10-31-milestone1.md`). The gserver side comes with
-   `seihai-gserver` stage 5.
+   `docs/lab/2026-10-31-milestone1.md`). `seihai-gserver` has its side of
+   these messages.
 2. **Done.** NPC files, the script host, and link messages back to the
    gserver. `setcharprop`, `setlevel2`, `message`, moves, `hurt`,
    `server.` flags, `say2` (`PM`), `toweapons` / `addweapon`
-   (`ADD_WEAPON`) and `showcharacter` are sent. `PM_TO_NPC`,
-   `SERVER_FLAGS` and `TRIGGER_ACTION` run. See `docs/NEXT.md` for the
-   commands that are still only logged.
+   (`ADD_WEAPON`), `showcharacter`, sounds, `setshape`, a script's own
+   `triggeraction` and the other player variables are sent. `PM_TO_NPC`,
+   `SERVER_FLAGS` and `TRIGGER_ACTION` run. See `docs/NEXT.md` for what is
+   still only logged and what is open.
 3. A sample world whose NPCs only work when the NPC-server runs; lab test with
    real 2.05 to 2.31 and Seihai.

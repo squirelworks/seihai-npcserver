@@ -1,7 +1,9 @@
 # Next steps
 
-Work in this order, one branch and pull request each. The design is in
-`docs/ARCHITECTURE.md` (milestone 2 plan). Rules: `AGENTS.md`.
+One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
+(the list below, kept as a record); what is still open is under **Open**.
+
+## Milestone 2 (done)
 
 - [x] **Wire scripts into the session.** `session::run` takes an optional
       `Scripts`. On the first `LEVEL_LIST` it reads `<world>/npcs`, calls
@@ -21,10 +23,8 @@ Work in this order, one branch and pull request each. The design is in
 - [x] **Player view.** Before `playerenters` / `playerleaves`, the level's
       `PlayerView` is filled from `world::Player` (nick, account, position,
       direction, hearts, chat). Bare `#n` is that player's nickname;
-      `seihai-core` expands it from `PlayerView.nick`. `#n(id)` is not
-      added: the engine leaves that code unchanged, and this server has no
-      id-to-nickname table (players are stored by id, which is not that
-      lookup).
+      `seihai-core` expands it from `PlayerView.nick`. `#n(id)` came in
+      the next items: this server expands it from `World.players`.
 
 - [x] **Mock gserver learns the new messages.** Loopback test: an NPC with
       `if (created) { timeout = 0.1; } if (timeout) { setcharprop #c,hi; timeout = 1; }`
@@ -35,17 +35,16 @@ Work in this order, one branch and pull request each. The design is in
       NPC props. `PM_TO_NPC` runs as `playerchats` on the sender's level,
       `SERVER_FLAGS` replaces the flag set, and `TRIGGER_ACTION` fires
       `action<name>`. `#n(id)` expands from `World.players` when that id
-      is online. Still unsupported, logged once, because this link has no
-      message for them: `say`, `play`, `playlooped`, `play2`, `stopsound`,
-      `stopmidi`, `setshape`, a script's own `triggeraction` (these since added, below),
-      `sendrpgmessage`, `sendtoserver`, other commands, and player
-      variables that are not a GCHAR prop (`playerrupees` and the rest).
+      is online. The commands this left logged-only were given link
+      messages in the items below, apart from `say`, `sendrpgmessage`,
+      `sendtoserver`, the selected weapon and unknown commands, which are
+      still logged once and skipped.
 
 - [x] **Sounds.** `play`, `playlooped` and `play2` are `PLAY_SOUND`,
       `stopsound` is `STOP_SOUND` and `stopmidi` is `STOP_MIDI`, each for
       the script's level (`PROTOCOL.md`, `0x48` to `0x4A`). The mock
       gserver receives them in the loopback test. `play2`'s volume is not
-      carried. The `seihai-gserver` side still has to apply them.
+      carried.
 
 - [x] **`setshape`.** Sent as `NPC_SHAPE` (`0x4B`): kind, width and height
       in pixels. The NPC prop stream has no shape prop.
@@ -78,16 +77,25 @@ Work in this order, one branch and pull request each. The design is in
 
 ## Open
 
+- [ ] **`seihai-gserver` applies the messages.** It reads the milestone 1
+      messages but does not yet act on anything the NPC-server sends (NPC
+      props, player props, warps, PMs, weapons, flags, triggers, sounds,
+      shapes). That work is in `seihai-gserver` (its stage 5); milestone 3
+      here waits on it.
 - [ ] **`playerleaves` does not run.** `session` fires it, but
       `seihai-core` v0.0.5 does not list it as an event, so the engine logs
       "`playerleaves` is not an event" and `if (playerleaves)` never runs
       (seen with the mock gserver and `examples/world`). Either add the
-      event in the seihai repo and bump the tag, or stop firing it and drop
-      it from the docs. Owner's call.
+      event in the seihai repo and bump the tag, or stop firing it. Owner's call.
 - [ ] **GServer-v2 style NPC files.** `npcdb` reads only our own
       `<world>/npcs/<name>.txt` format. A reader for GServer-v2 world folders,
       written from the file format and not from its code (`AGENTS.md`), is
       still to do.
+- [ ] **`sendtonc` and `sendtorc`.** The reference server's scripts have
+      them; a later item if wanted.
+- [ ] **A v0.1.1 release.** `main` has `playerswordpower`,
+      `playershieldpower` and `playerhp` since `v0.1.0`, and
+      `seihai-gserver` depends on this crate at `v0.1.0`.
 
 Milestone 3 is next (`docs/PLAN.md`): a sample world whose NPCs only work
 when the NPC-server is running, lab-tested with real clients once

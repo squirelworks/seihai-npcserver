@@ -24,7 +24,7 @@ the gserver to change players.
 | `link` | done (m2) | Frames and messages, including the NPC-to-gserver rows. No sockets, so `seihai-gserver` can depend on this crate (by git tag) and share the codec. |
 | `session` | done (m2) | Connect, `HELLO`, wait for `WELCOME`, then the tick loop: read, run scripts, send their messages, keep-alive. Reader thread + `mpsc`, no async runtime. |
 | `world` | done (m2) | Levels and players as the gserver described them. Raw prop bytes per prop id. Nick, position, direction, hearts and chat are decoded for the player view. |
-| `npcdb` | started (m2) | Reads `<world>/npcs/*.txt` (format below). |
+| `npcdb` | done (m2) | Reads `<world>/npcs/*.txt` (format below). A GServer-v2 world reader is open (`docs/NEXT.md`). |
 | `scripts` | done (m2) | One `seihai_core::scripting::engine::world::ScriptWorld` per level. `created`, `timeout`, `playerenters`, `playerchats` (from `PM_TO_NPC`) and `action*` (from `TRIGGER_ACTION`) run. `playerleaves` is fired but `seihai-core` v0.0.5 does not know it (`docs/NEXT.md`, Open). |
 | `effects` | done (m2) | Maps `Effect` values onto link messages. Anything without a message is logged once. |
 | `mock` | done (m2) | Stand-in gserver for tests and `examples/mock_gserver.rs`. Binds to 127.0.0.1 only. Records `NPC_PROPS` and the other NPC-to-gserver messages. |
@@ -42,7 +42,7 @@ Every 0.1 s (the smallest useful `timeout`):
 3. Keep-alive: `PING` after 30 s of not sending, close after 90 s of silence.
 4. Write everything produced this tick as one frame.
 
-## Milestone 2 plan (one PR, in this order)
+## Milestone 2 (done)
 
 1. **Done.** `session::run` takes an optional `Scripts`. On the first
    `LEVEL_LIST` it reads `<world>/npcs` (the 2001 order), calls
