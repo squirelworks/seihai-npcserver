@@ -10,9 +10,9 @@ Work in this order, one branch and pull request each. The design is in
 
 - [x] **Link messages NPC to gserver.** The milestone 2 messages are in
       `PROTOCOL.md` (no longer a draft). Link version 1 stays. Encode and
-      decode live in `link`, with round-trip tests. The `seihai-gserver`
-      copy of `PROTOCOL.md` is still the draft; that repo was not part of
-      this change.
+      decode live in `link`, with round-trip tests. `seihai-gserver` now
+      carries the same `PROTOCOL.md` and depends on this crate's `link`
+      at tag `v0.1.0`.
 
 - [x] **Effects to link messages.** `src/effects.rs` maps `Effect` values
       onto those messages (`docs/ARCHITECTURE.md`, the effects table).
@@ -76,6 +76,19 @@ Work in this order, one branch and pull request each. The design is in
       the reference server's scripts have neither. Its `sendtonc` and
       `sendtorc` could be a later item.
 
+## Open
+
+- [ ] **`playerleaves` does not run.** `session` fires it, but
+      `seihai-core` v0.0.5 does not list it as an event, so the engine logs
+      "`playerleaves` is not an event" and `if (playerleaves)` never runs
+      (seen with the mock gserver and `examples/world`). Either add the
+      event in the seihai repo and bump the tag, or stop firing it and drop
+      it from the docs. Owner's call.
+- [ ] **GServer-v2 style NPC files.** `npcdb` reads only our own
+      `<world>/npcs/<name>.txt` format. A reader for GServer-v2 world folders,
+      written from the file format and not from its code (`AGENTS.md`), is
+      still to do.
+
 Milestone 3 is next (`docs/PLAN.md`): a sample world whose NPCs only work
 when the NPC-server is running, lab-tested with real clients once
-`seihai-gserver` has its side of the link.
+`seihai-gserver` applies the NPC-server's messages.

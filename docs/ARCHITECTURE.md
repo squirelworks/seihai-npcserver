@@ -25,7 +25,7 @@ the gserver to change players.
 | `session` | done (m2) | Connect, `HELLO`, wait for `WELCOME`, then the tick loop: read, run scripts, send their messages, keep-alive. Reader thread + `mpsc`, no async runtime. |
 | `world` | done (m2) | Levels and players as the gserver described them. Raw prop bytes per prop id. Nick, position, direction, hearts and chat are decoded for the player view. |
 | `npcdb` | started (m2) | Reads `<world>/npcs/*.txt` (format below). |
-| `scripts` | done (m2) | One `seihai_core::scripting::engine::world::ScriptWorld` per level. `created`, `timeout`, `playerenters`, `playerleaves`, `playerchats` (from `PM_TO_NPC`) and `action*` (from `TRIGGER_ACTION`) run. |
+| `scripts` | done (m2) | One `seihai_core::scripting::engine::world::ScriptWorld` per level. `created`, `timeout`, `playerenters`, `playerchats` (from `PM_TO_NPC`) and `action*` (from `TRIGGER_ACTION`) run. `playerleaves` is fired but `seihai-core` v0.0.5 does not know it (`docs/NEXT.md`, Open). |
 | `effects` | done (m2) | Maps `Effect` values onto link messages. Anything without a message is logged once. |
 | `mock` | done (m2) | Stand-in gserver for tests and `examples/mock_gserver.rs`. Binds to 127.0.0.1 only. Records `NPC_PROPS` and the other NPC-to-gserver messages. |
 | `main` | done (m1) | Arguments, token, logging, reconnect with backoff, `--once`. |
@@ -51,7 +51,7 @@ Every 0.1 s (the smallest useful `timeout`):
    a reconnect.
 2. **Done.** The milestone 2 messages are specified in `PROTOCOL.md` (link
    version 1 stays; the ids were reserved) and encoded in `link`, with
-   round-trip tests. The copy in `seihai-gserver` is still the draft.
+   round-trip tests. `seihai-gserver` carries the same file.
 3. **Done.** `src/effects.rs`:
 
    | `Effect` | Link message |
@@ -96,7 +96,8 @@ engine into this repo.
 
 Milestone 3 (`05-npcserver.md` in the handoff folder): a sample world whose
 NPCs only work with the NPC-server running, lab-tested with real 2.05 to 2.31
-and Seihai once `seihai-gserver` has its side of the link (its stage 5).
+and Seihai once `seihai-gserver` applies the NPC-server's messages (it
+already has the handshake, level list and player side).
 
 ## NPC files
 

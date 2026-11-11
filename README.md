@@ -13,7 +13,7 @@ client: [seihai](https://github.com/squirelworks/seihai).
 **Status: milestone 2.** It connects to the gserver over the NPC-server
 link, authenticates, and logs the level list and player props it is sent.
 After that list it loads `<world>/npcs`, runs the server-side scripts
-(`created`, `timeout`, `playerenters`, `playerleaves`, PMs and
+(`created`, `timeout`, `playerenters`, PMs and
 `triggeraction`), and sends NPC changes, player changes, PMs and weapon
 grants back over the link. The link is specified in
 [PROTOCOL.md](PROTOCOL.md), the module map is in
@@ -38,7 +38,9 @@ config. The token is never taken on the command line.
 
 ## Try it without a gserver
 
-Until `seihai-gserver` has its side of the link, a stand-in gserver ships as an
+`seihai-gserver` has the handshake, level list and player side of the link,
+but does not apply the NPC-server's messages (NPC props, player changes,
+warps and the rest) yet. To see those, a stand-in gserver ships as an
 example. It listens on `127.0.0.1` only:
 
 ```
