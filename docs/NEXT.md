@@ -82,20 +82,17 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
       props, player props, warps, PMs, weapons, flags, triggers, sounds,
       shapes). That work is in `seihai-gserver` (its stage 5); milestone 3
       here waits on it.
-- [ ] **`playerleaves` does not run.** `session` fires it, but
-      `seihai-core` v0.0.5 does not list it as an event, so the engine logs
-      "`playerleaves` is not an event" and `if (playerleaves)` never runs
-      (seen with the mock gserver and `examples/world`). Either add the
-      event in the seihai repo and bump the tag, or stop firing it. Owner's call.
+- [x] **`playerleaves` runs.** `session` fires it, and `seihai-core`
+      `v0.0.6` lists it as a 2.1-era event (seihai #390), so
+      `if (playerleaves)` runs. Test: `scripts::tests::playerleaves_runs`.
 - [ ] **GServer-v2 style NPC files.** `npcdb` reads only our own
       `<world>/npcs/<name>.txt` format. A reader for GServer-v2 world folders,
       written from the file format and not from its code (`AGENTS.md`), is
       still to do.
 - [ ] **`sendtonc` and `sendtorc`.** The reference server's scripts have
       them; a later item if wanted.
-- [ ] **A v0.1.1 release.** `main` has `playerswordpower`,
-      `playershieldpower` and `playerhp` since `v0.1.0`, and
-      `seihai-gserver` depends on this crate at `v0.1.0`.
+- [ ] **A v0.1.1 release.** Notes in `docs/releases/v0.1.1.md`; the tag
+      waits on the owner. Then `seihai-gserver` moves off `v0.1.0`.
 
 Milestone 3 is next (`docs/PLAN.md`): a sample world whose NPCs only work
 when the NPC-server is running, lab-tested with real clients once

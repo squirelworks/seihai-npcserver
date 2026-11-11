@@ -601,6 +601,32 @@ mod tests {
     }
 
     #[test]
+    fn playerleaves_runs() {
+        // seihai-core v0.0.6 lists `playerleaves` as a 2.1-era event
+        // (seihai #390); with v0.0.5 this block never ran.
+        let mut s = Scripts::new(Era::V21);
+        s.load(&[npc("if (playerleaves) { message bye #n; }")]);
+        let _ = s.start();
+        let mut player = Player {
+            account: b"acct".to_vec(),
+            level: b"onlinestartlocal.nw".to_vec(),
+            ..Player::default()
+        };
+        for pr in seihai_core::protocol::parse_player_props(&crate::mock::sample_props(
+            b"test205", 30, 31,
+        )) {
+            player.props.insert(pr.id, pr.raw);
+        }
+        let produced = s.on_player(2, &player, "playerleaves");
+        let text = produced
+            .messages
+            .iter()
+            .find_map(message_of)
+            .unwrap_or_default();
+        assert_eq!(text, "bye test205", "{:?}", produced.messages);
+    }
+
+    #[test]
     fn hash_n_with_an_id_expands_when_that_player_is_online() {
         let mut s = Scripts::new(Era::V21);
         s.set_nicks(BTreeMap::from([(2, "test205".into())]));
