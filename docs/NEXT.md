@@ -92,9 +92,9 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
 - [x] **Level-less NPCs.** A `GRNPC001` file with an empty `STARTLEVEL`
       (the fork's Control-NPC, `TYPE CONTROL`) runs in a world of its own
       and gets `playerlogin`/`playerlogout` (`docs/ARCHITECTURE.md`).
-- [ ] **`playerlogin`/`playerlogout` blocks run.** They are fired, but
-      `seihai-core` `v0.0.6` does not list them as events; seihai #416 does.
-      Move to the next seihai-core tag (owner's go-ahead) and add the test.
+- [x] **`playerlogin`/`playerlogout` blocks run.** `seihai-core` `v0.0.7`
+      lists them (seihai #416). Test:
+      `scripts::tests::level_less_npcs_get_playerlogin_and_playerlogout`.
 - [ ] **`sendtonc` and `sendtorc`.** The reference server's scripts have
       them; a later item if wanted.
 - [ ] **A v0.1.1 release.** Notes in `docs/releases/v0.1.1.md`; the tag

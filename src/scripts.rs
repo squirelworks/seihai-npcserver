@@ -855,9 +855,45 @@ mod tests {
         // reach the level-less NPCs through it.
         let nobody = Player::default();
         assert!(s.on_player(2, &nobody, "playerenters").messages.is_empty());
-        // `playerlogin` reaches them through `on_login`. seihai-core v0.0.6
-        // does not list it as an event yet (seihai #416), so its test comes
-        // with the tag that does.
+    }
+
+    /// seihai-core v0.0.7 lists `playerlogin` and `playerlogout` (seihai
+    /// #416), so a level-less NPC's blocks run for each player.
+    #[test]
+    fn level_less_npcs_get_playerlogin_and_playerlogout() {
+        let mut s = Scripts::new(Era::V21);
+        s.load(&[NpcDef {
+            level: Vec::new(),
+            ..npc("if (playerlogin) { set server.in_#a; }\nif (playerlogout) { set server.out_#a; }\nif (playerenters) { set server.wrong; }")
+        }]);
+        let _ = s.start();
+        let player = Player {
+            account: b"acct".to_vec(),
+            level: b"onlinestartlocal.nw".to_vec(),
+            ..Player::default()
+        };
+        let flag = |p: &Produced| -> Vec<String> {
+            p.messages
+                .iter()
+                .filter_map(|m| match m {
+                    Message::ServerFlag { name, .. } => {
+                        Some(String::from_utf8_lossy(name).into_owned())
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let login = s.on_login(2, &player, "playerlogin");
+        assert_eq!(flag(&login), vec!["server.in_acct"], "{:?}", login.messages);
+        // The player's level has no NPCs; the level-less one is not in it.
+        assert!(s.on_player(2, &player, "playerenters").messages.is_empty());
+        let logout = s.on_login(2, &player, "playerlogout");
+        assert_eq!(
+            flag(&logout),
+            vec!["server.out_acct"],
+            "{:?}",
+            logout.messages
+        );
     }
 
     #[test]

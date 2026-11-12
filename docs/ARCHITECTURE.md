@@ -157,8 +157,7 @@ NPCSCRIPTEND
   It gets no `NPC_ADDED`, and what only makes sense in a level (its own
   props, sounds, `NPC_TRIGGER_ACTION`) is dropped with one log line. Player
   props, warps, weapons, PMs and flags go out as usual. `playerlogin` and
-  `playerlogout` run once `seihai-core` is on a tag with seihai #416 (after
-  `v0.0.6`).
+  `playerlogout` are events from `seihai-core` `v0.0.7` (seihai #416).
 
 ## Decisions (ask Squirrel before changing)
 
