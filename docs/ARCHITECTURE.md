@@ -24,7 +24,7 @@ the gserver to change players.
 | `link` | done (m2) | Frames and messages, including the NPC-to-gserver rows. No sockets, so `seihai-gserver` can depend on this crate (by git tag) and share the codec. |
 | `session` | done (m2) | Connect, `HELLO`, wait for `WELCOME`, then the tick loop: read, run scripts, send their messages, keep-alive. Reader thread + `mpsc`, no async runtime. |
 | `world` | done (m2) | Levels and players as the gserver described them. Raw prop bytes per prop id. Nick, position, direction, hearts and chat are decoded for the player view. |
-| `npcdb` | done (m2) | Reads `<world>/npcs/*.txt` (format below). A GServer-v2 world reader is open (`docs/NEXT.md`). |
+| `npcdb` | done (m2) | Reads `<world>/npcs/*.txt`: our format and GServer-v2's `GRNPC001` files (below). |
 | `scripts` | done (m2) | One `seihai_core::scripting::engine::world::ScriptWorld` per level. `created`, `timeout`, `playerenters`, `playerchats` (from `PM_TO_NPC`) and `action*` (from `TRIGGER_ACTION`) run. `playerleaves` runs since `seihai-core` v0.0.6. |
 | `effects` | done (m2) | Maps `Effect` values onto link messages. Anything without a message is logged once. |
 | `mock` | done (m2) | Stand-in gserver for tests and `examples/mock_gserver.rs`. Binds to 127.0.0.1 only. Records `NPC_PROPS` and the other NPC-to-gserver messages. |
@@ -116,8 +116,42 @@ SCRIPTEND
 
 Unknown keys are an error so typos show up. Planned keys: `NAME` (for
 `callnpc` by name and NPC Control), `TYPE` (level NPC or "database NPC" with no
-level), `CLASS`. GServer-v2 world folders keep NPCs differently; a reader for
-those goes in `npcdb` too, written from the file format, not GServer-v2's code.
+level), `CLASS`. Until then an NPC's name is its file name without `.txt`.
+
+### GServer-v2 world folders (`GRNPC001`)
+
+A file in the same folder whose first line is `GRNPC001` is read as a
+GServer-v2 style NPC (`npcs/npc<NAME>.txt`). The reader was written from the
+sample files in the fork's lab worlds, not from GServer-v2's code.
+
+```
+GRNPC001
+NAME Control-NPC
+ID 10000
+TYPE CONTROL
+IMAGE
+STARTLEVEL
+STARTX 30.00
+STARTY 30.00
+COLORS 2,0,10,4,18
+SHAPE 32 48
+NPCSCRIPT
+if (playerlogin) { sendtorc #a has logged in!; }
+NPCSCRIPTEND
+```
+
+- `NAME`, `STARTLEVEL`, `STARTX`, `STARTY`, `IMAGE` and the script fill the
+  same `NpcDef` as our format. Every other `KEY value` line (`ID`, `TYPE`,
+  `NICK`, `ANI`, the stats, `COLORS`, `SHAPE`, `SAVEARR`, and keys we do not
+  know) is kept as written in `NpcDef::props`, not refused.
+- A missing key keeps its default (empty, or 0 for `STARTX`/`STARTY`).
+  CRLF line ends and a UTF-8 byte order mark are fine.
+- NPC ids stay the file's place in name order; the `ID` line is kept in
+  `props` only.
+- When one of our files and a `GRNPC001` file have the same name, ours is
+  used and the other is logged as skipped.
+- An empty `STARTLEVEL` (the Control-NPC) is a level-less NPC. It is read but
+  not run yet, and is logged as skipped (`docs/NEXT.md`).
 
 ## Decisions (ask Squirrel before changing)
 
