@@ -1,7 +1,9 @@
 //! The script host: runs server-side GS1 NPCs.
 //!
 //! One [`ScriptWorld`] from `seihai-core` per level that has server-side
-//! NPCs. The tick loop in [`crate::session`] calls [`Scripts::tick`] once per
+//! NPCs, plus one with an empty name for the level-less NPCs (an empty
+//! `STARTLEVEL`), which get `playerlogin` / `playerlogout` from
+//! [`Scripts::on_login`]. The tick loop in [`crate::session`] calls [`Scripts::tick`] once per
 //! tick. Effects become link messages in [`crate::effects`].
 //!
 //! Bare `#n` is the acting player's nickname: `seihai-core` expands it from
@@ -22,6 +24,9 @@ use crate::effects::{self, Ctx, Outbound};
 use crate::link::{show, Message};
 use crate::npcdb::NpcDef;
 use crate::world::Player;
+
+/// The world key of the level-less NPCs: an empty level name.
+const LEVELLESS: &[u8] = b"";
 
 /// Messages to send and lines to log from one script step.
 #[derive(Debug, Default)]
@@ -99,19 +104,7 @@ impl Scripts {
             self.database_opened = true;
             return Ok((self.npc_count, Vec::new()));
         };
-        let (npcs, mut problems) = crate::npcdb::load(&dir)?;
-        // A level-less NPC (a GRNPC001 `TYPE CONTROL` NPC, say) has no
-        // level world to run in yet; it is read but not run.
-        let (npcs, levelless): (Vec<_>, Vec<_>) =
-            npcs.into_iter().partition(|n| !n.level.is_empty());
-        for n in levelless {
-            problems.push(format!(
-                "NPC {:?} (id {}{}): no start level; level-less NPCs are read but not run yet",
-                n.name,
-                n.id,
-                n.kind().map(|k| format!(", TYPE {k}")).unwrap_or_default()
-            ));
-        }
+        let (npcs, problems) = crate::npcdb::load(&dir)?;
         let n = npcs.len();
         self.load(&npcs);
         Ok((n, problems))
@@ -196,6 +189,9 @@ impl Scripts {
     /// (`playerenters` or `playerleaves`) for that one player.
     pub fn on_player(&mut self, player_id: u16, player: &Player, event: &str) -> Produced {
         let level = player.level.clone();
+        if level.as_slice() == LEVELLESS {
+            return Produced::default();
+        }
         let Some(w) = self.levels.get_mut(&level) else {
             return Produced::default();
         };
@@ -205,12 +201,25 @@ impl Scripts {
         self.collect(&level, Some(player_id))
     }
 
+    /// `playerlogin` or `playerlogout` for `player`, on the level-less NPCs
+    /// (a `GRNPC001` file with an empty `STARTLEVEL`, such as the fork's
+    /// Control-NPC). Those NPCs run in their own world with no level.
+    pub fn on_login(&mut self, player_id: u16, player: &Player, event: &str) -> Produced {
+        let Some(w) = self.levels.get_mut(LEVELLESS) else {
+            return Produced::default();
+        };
+        w.core.player = view_of(player);
+        w.core.level = String::new();
+        w.broadcast(event);
+        self.collect(LEVELLESS, Some(player_id))
+    }
+
     /// A PM from `player` to the NPC-server. The link names the sender and
     /// the text, not an NPC, so every NPC on that player's level gets
     /// `playerchats` with `#c` set to the text. The engine has no PM event.
     pub fn on_pm(&mut self, player_id: u16, player: &Player, text: &str) -> Produced {
         let level = player.level.clone();
-        if !self.levels.contains_key(&level) {
+        if level.as_slice() == LEVELLESS || !self.levels.contains_key(&level) {
             let mut produced = Produced::default();
             self.note_once(
                 "pm-no-npcs",
@@ -250,7 +259,7 @@ impl Scripts {
             );
             return produced;
         }
-        if !self.levels.contains_key(level) {
+        if level == LEVELLESS || !self.levels.contains_key(level) {
             let mut produced = Produced::default();
             self.note_once(
                 "trigger-no-npcs",
@@ -317,6 +326,33 @@ impl Scripts {
         out
     }
 
+    /// A level-less NPC has no level and no players watching it: its own
+    /// prop changes, sounds and trigger actions have nowhere to go. Player
+    /// changes, warps, weapons, PMs and flags still go out.
+    fn drop_level_bound(&mut self, produced: &mut Produced) {
+        let before = produced.messages.len();
+        produced.messages.retain(|m| {
+            !matches!(
+                m,
+                Message::NpcAdded { .. }
+                    | Message::NpcProps { .. }
+                    | Message::NpcDeleted { .. }
+                    | Message::PlaySound { .. }
+                    | Message::StopSound { .. }
+                    | Message::StopMidi { .. }
+                    | Message::NpcTriggerAction { .. }
+            )
+        });
+        if produced.messages.len() != before {
+            self.note_once(
+                "levelless-dropped",
+                "a level-less NPC changed itself, played a sound or sent a trigger action; \
+                 with no level these are not sent",
+                produced,
+            );
+        }
+    }
+
     fn note_once(&mut self, key: &str, line: &str, produced: &mut Produced) {
         if self.noted.insert(key.to_string()) {
             produced.notes.push(line.to_string());
@@ -325,7 +361,10 @@ impl Scripts {
 
     /// Levels that have server-side NPCs.
     pub fn levels(&self) -> impl Iterator<Item = &[u8]> {
-        self.levels.keys().map(|k| k.as_slice())
+        self.levels
+            .keys()
+            .map(|k| k.as_slice())
+            .filter(|k| *k != LEVELLESS)
     }
 
     pub fn is_started(&self) -> bool {
@@ -340,6 +379,8 @@ impl Scripts {
         let messages = self
             .npcs
             .iter()
+            // A level-less NPC is not in any level, so no player sees it.
+            .filter(|n| !n.level.is_empty())
             .map(|n| Message::NpcAdded {
                 npc_id: n.id,
                 level: n.level.clone(),
@@ -402,6 +443,9 @@ impl Scripts {
                     .push(format!("script {}: {note}", show(level)));
             }
             produced.messages.extend(mapped.messages);
+        }
+        if level == LEVELLESS {
+            self.drop_level_bound(&mut produced);
         }
         // `addweapon` is not a command in seihai-core, so the engine logs it
         // as an unknown command and keeps the argument text. That text is
@@ -743,7 +787,7 @@ mod tests {
     }
 
     #[test]
-    fn grnpc_files_come_up_and_level_less_ones_are_noted() {
+    fn grnpc_files_come_up_and_level_less_ones_load() {
         let dir = std::env::temp_dir().join(format!("seihai-grnpc-world-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("npcs")).unwrap();
@@ -760,11 +804,18 @@ mod tests {
         let mut s = Scripts::with_world(Era::V21, &dir);
         let (count, problems) = s.open_database().unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
-        assert_eq!(count, 1);
-        assert_eq!(problems.len(), 1, "{problems:?}");
-        assert!(problems[0].contains("Control-NPC") && problems[0].contains("TYPE CONTROL"));
+        assert_eq!(count, 2);
+        assert!(problems.is_empty(), "{problems:?}");
         assert_eq!(s.levels().collect::<Vec<_>>(), vec![&b"start.nw"[..]]);
         let started = s.start();
+        assert!(
+            !started
+                .messages
+                .iter()
+                .any(|m| matches!(m, Message::NpcAdded { level, .. } if level.is_empty())),
+            "a level-less NPC is not announced: {:?}",
+            started.messages
+        );
         assert!(started.messages.iter().any(|m| matches!(
             m,
             Message::NpcAdded { npc_id: 2, level, .. } if level == b"start.nw"
@@ -774,6 +825,75 @@ mod tests {
             .iter()
             .filter_map(message_of)
             .any(|t| t.contains("read me")));
+    }
+
+    #[test]
+    fn level_less_npcs_run_and_send_only_what_has_somewhere_to_go() {
+        let mut s = Scripts::new(Era::V21);
+        s.load(&[NpcDef {
+            level: Vec::new(),
+            ..npc("if (created) { set server.control; message hi; timeout = 0.05; }\nif (timeout) { set server.ticked; }\nif (playerenters) { set server.wrong; }")
+        }]);
+        let started = s.start();
+        assert!(
+            started
+                .messages
+                .iter()
+                .all(|m| matches!(m, Message::ServerFlag { .. })),
+            "only the flag goes out: {:?}",
+            started.messages
+        );
+        assert_eq!(started.messages.len(), 1, "{:?}", started.messages);
+        assert!(
+            started.notes.iter().any(|n| n.contains("level-less")),
+            "{:?}",
+            started.notes
+        );
+        let ticked = s.tick(100);
+        assert_eq!(ticked.messages.len(), 1, "{:?}", ticked.messages);
+        // `playerenters` is a level event: a player with no level does not
+        // reach the level-less NPCs through it.
+        let nobody = Player::default();
+        assert!(s.on_player(2, &nobody, "playerenters").messages.is_empty());
+    }
+
+    /// seihai-core v0.0.7 lists `playerlogin` and `playerlogout` (seihai
+    /// #416), so a level-less NPC's blocks run for each player.
+    #[test]
+    fn level_less_npcs_get_playerlogin_and_playerlogout() {
+        let mut s = Scripts::new(Era::V21);
+        s.load(&[NpcDef {
+            level: Vec::new(),
+            ..npc("if (playerlogin) { set server.in_#a; }\nif (playerlogout) { set server.out_#a; }\nif (playerenters) { set server.wrong; }")
+        }]);
+        let _ = s.start();
+        let player = Player {
+            account: b"acct".to_vec(),
+            level: b"onlinestartlocal.nw".to_vec(),
+            ..Player::default()
+        };
+        let flag = |p: &Produced| -> Vec<String> {
+            p.messages
+                .iter()
+                .filter_map(|m| match m {
+                    Message::ServerFlag { name, .. } => {
+                        Some(String::from_utf8_lossy(name).into_owned())
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let login = s.on_login(2, &player, "playerlogin");
+        assert_eq!(flag(&login), vec!["server.in_acct"], "{:?}", login.messages);
+        // The player's level has no NPCs; the level-less one is not in it.
+        assert!(s.on_player(2, &player, "playerenters").messages.is_empty());
+        let logout = s.on_login(2, &player, "playerlogout");
+        assert_eq!(
+            flag(&logout),
+            vec!["server.out_acct"],
+            "{:?}",
+            logout.messages
+        );
     }
 
     #[test]
