@@ -439,17 +439,15 @@ fn handle(
                 None => log("NPC Control: script set with no scripts loaded".into()),
             }
         }
-        Message::NcNpcDelete { npc_id } => {
-            match scripts.map(|s| s.nc_delete(npc_id)) {
-                Some(Ok(produced)) => {
-                    log(format!("NPC Control: NPC {npc_id} deleted"));
-                    log_produced(&produced, log);
-                    out.extend(produced.messages);
-                }
-                Some(Err(e)) => log(format!("NPC Control: delete refused: {e}")),
-                None => log("NPC Control: delete with no scripts loaded".into()),
+        Message::NcNpcDelete { npc_id } => match scripts.map(|s| s.nc_delete(npc_id)) {
+            Some(Ok(produced)) => {
+                log(format!("NPC Control: NPC {npc_id} deleted"));
+                log_produced(&produced, log);
+                out.extend(produced.messages);
             }
-        }
+            Some(Err(e)) => log(format!("NPC Control: delete refused: {e}")),
+            None => log("NPC Control: delete with no scripts loaded".into()),
+        },
         Message::NcNpc { .. } | Message::NcText { .. } => note_once(
             seen_unknown,
             link::id::NC_NPC,
