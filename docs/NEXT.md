@@ -85,10 +85,14 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
 - [x] **`playerleaves` runs.** `session` fires it, and `seihai-core`
       `v0.0.6` lists it as a 2.1-era event (seihai #390), so
       `if (playerleaves)` runs. Test: `scripts::tests::playerleaves_runs`.
-- [ ] **GServer-v2 style NPC files.** `npcdb` reads only our own
-      `<world>/npcs/<name>.txt` format. A reader for GServer-v2 world folders,
-      written from the file format and not from its code (`AGENTS.md`), is
-      still to do.
+- [x] **GServer-v2 style NPC files.** `npcdb` reads `GRNPC001` files
+      beside ours (issue #21; `docs/ARCHITECTURE.md`, "GServer-v2 world
+      folders"). Checked on a copy of the fork's `npcdemo` world:
+      `docs/lab/2026-11-12-grnpc-npcdemo.md`.
+- [ ] **Level-less NPCs.** A `GRNPC001` file with an empty `STARTLEVEL`
+      (the fork's Control-NPC, `TYPE CONTROL`) is read but not run: there is
+      no level world for it, and `playerlogin`/`playerlogout`, which its
+      script uses, are not fired yet.
 - [ ] **`sendtonc` and `sendtorc`.** The reference server's scripts have
       them; a later item if wanted.
 - [ ] **A v0.1.1 release.** Notes in `docs/releases/v0.1.1.md`; the tag

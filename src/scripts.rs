@@ -99,7 +99,19 @@ impl Scripts {
             self.database_opened = true;
             return Ok((self.npc_count, Vec::new()));
         };
-        let (npcs, problems) = crate::npcdb::load(&dir)?;
+        let (npcs, mut problems) = crate::npcdb::load(&dir)?;
+        // A level-less NPC (a GRNPC001 `TYPE CONTROL` NPC, say) has no
+        // level world to run in yet; it is read but not run.
+        let (npcs, levelless): (Vec<_>, Vec<_>) =
+            npcs.into_iter().partition(|n| !n.level.is_empty());
+        for n in levelless {
+            problems.push(format!(
+                "NPC {:?} (id {}{}): no start level; level-less NPCs are read but not run yet",
+                n.name,
+                n.id,
+                n.kind().map(|k| format!(", TYPE {k}")).unwrap_or_default()
+            ));
+        }
         let n = npcs.len();
         self.load(&npcs);
         Ok((n, problems))
@@ -517,6 +529,7 @@ mod tests {
             y: 30.0,
             image: "block.png".into(),
             script: script.into(),
+            ..NpcDef::default()
         }
     }
 
@@ -727,6 +740,40 @@ mod tests {
             "sendrpgmessage should be logged once: {:?}",
             again.notes
         );
+    }
+
+    #[test]
+    fn grnpc_files_come_up_and_level_less_ones_are_noted() {
+        let dir = std::env::temp_dir().join(format!("seihai-grnpc-world-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("npcs")).unwrap();
+        std::fs::write(
+            dir.join("npcs/npcControl-NPC.txt"),
+            "GRNPC001\r\nNAME Control-NPC\r\nID 10000\r\nTYPE CONTROL\r\nSTARTLEVEL \r\nNPCSCRIPT\r\nif (playerlogin) { message x; }\r\nNPCSCRIPTEND\r\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("npcs/npcSign.txt"),
+            "GRNPC001\nNAME Sign\nIMAGE sign.png\nSTARTLEVEL start.nw\nSTARTX 5\nSTARTY 6\nNPCSCRIPT\nif (created) { message read me; }\nNPCSCRIPTEND\n",
+        )
+        .unwrap();
+        let mut s = Scripts::with_world(Era::V21, &dir);
+        let (count, problems) = s.open_database().unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("Control-NPC") && problems[0].contains("TYPE CONTROL"));
+        assert_eq!(s.levels().collect::<Vec<_>>(), vec![&b"start.nw"[..]]);
+        let started = s.start();
+        assert!(started.messages.iter().any(|m| matches!(
+            m,
+            Message::NpcAdded { npc_id: 2, level, .. } if level == b"start.nw"
+        )));
+        assert!(started
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|t| t.contains("read me")));
     }
 
     #[test]
