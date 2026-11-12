@@ -225,7 +225,8 @@ pub enum Message {
         npc_id: u32,
         script: Vec<u8>,
     },
-    /// NPC Control: take an NPC out of the database (GS → NPC).
+    /// NPC Control: take an NPC out of the database (GS → NPC); and, back,
+    /// that it is out (NPC → GS).
     NcNpcDelete {
         npc_id: u32,
     },

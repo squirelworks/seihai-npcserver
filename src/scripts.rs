@@ -469,6 +469,9 @@ impl Scripts {
             produced.messages.push(Message::NpcDeleted { npc_id });
         }
         produced.append(self.restart_level(&n.level));
+        // Last, so NPC Control drops it from its list only once it is
+        // gone. `NPC_DELETED` alone does not say so: a restart sends it too.
+        produced.messages.push(Message::NcNpcDelete { npc_id });
         Ok(produced)
     }
 
@@ -1070,6 +1073,10 @@ mod tests {
             .messages
             .iter()
             .any(|m| matches!(m, Message::NpcDeleted { npc_id: 1 })));
+        assert_eq!(
+            del.messages.last(),
+            Some(&Message::NcNpcDelete { npc_id: 1 })
+        );
         assert!(!dir.join("npcs/bell.txt").exists());
         assert!(dir.join("npcs/bell.txt.deleted").exists());
         assert!(!text(s.nc_get(10, 1, 0)).0);
