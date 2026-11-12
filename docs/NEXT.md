@@ -89,10 +89,12 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
       beside ours (issue #21; `docs/ARCHITECTURE.md`, "GServer-v2 world
       folders"). Checked on a copy of the fork's `npcdemo` world:
       `docs/lab/2026-11-12-grnpc-npcdemo.md`.
-- [ ] **Level-less NPCs.** A `GRNPC001` file with an empty `STARTLEVEL`
-      (the fork's Control-NPC, `TYPE CONTROL`) is read but not run: there is
-      no level world for it, and `playerlogin`/`playerlogout`, which its
-      script uses, are not fired yet.
+- [x] **Level-less NPCs.** A `GRNPC001` file with an empty `STARTLEVEL`
+      (the fork's Control-NPC, `TYPE CONTROL`) runs in a world of its own
+      and gets `playerlogin`/`playerlogout` (`docs/ARCHITECTURE.md`).
+- [ ] **`playerlogin`/`playerlogout` blocks run.** They are fired, but
+      `seihai-core` `v0.0.6` does not list them as events; seihai #416 does.
+      Move to the next seihai-core tag (owner's go-ahead) and add the test.
 - [ ] **`sendtonc` and `sendtorc`.** The reference server's scripts have
       them; a later item if wanted.
 - [ ] **A v0.1.1 release.** Notes in `docs/releases/v0.1.1.md`; the tag

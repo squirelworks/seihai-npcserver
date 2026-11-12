@@ -150,8 +150,15 @@ NPCSCRIPTEND
   `props` only.
 - When one of our files and a `GRNPC001` file have the same name, ours is
   used and the other is logged as skipped.
-- An empty `STARTLEVEL` (the Control-NPC) is a level-less NPC. It is read but
-  not run yet, and is logged as skipped (`docs/NEXT.md`).
+- An empty `STARTLEVEL` (the Control-NPC) is a level-less NPC. It runs in its
+  own script world with no level: `created`, `timeout`, and `playerlogin` /
+  `playerlogout` when a player joins or leaves the server (`PLAYER_JOINED`,
+  `PLAYER_LEFT`; login before `playerenters`, logout after `playerleaves`).
+  It gets no `NPC_ADDED`, and what only makes sense in a level (its own
+  props, sounds, `NPC_TRIGGER_ACTION`) is dropped with one log line. Player
+  props, warps, weapons, PMs and flags go out as usual. `playerlogin` and
+  `playerlogout` run once `seihai-core` is on a tag with seihai #416 (after
+  `v0.0.6`).
 
 ## Decisions (ask Squirrel before changing)
 

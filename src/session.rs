@@ -274,15 +274,9 @@ fn handle(
             ));
             world.players.insert(player_id, p);
             if let Some(player) = world.players.get(&player_id).cloned() {
-                player_event(
-                    &mut scripts,
-                    world,
-                    player_id,
-                    &player,
-                    "playerenters",
-                    out,
-                    log,
-                );
+                for event in ["playerlogin", "playerenters"] {
+                    player_event(&mut scripts, world, player_id, &player, event, out, log);
+                }
             }
         }
         Message::PlayerProps { player_id, props } => match world.players.get_mut(&player_id) {
@@ -298,7 +292,9 @@ fn handle(
         Message::PlayerLeft { player_id } => {
             if let Some(p) = world.players.remove(&player_id) {
                 log(format!("player {player_id} left: \"{}\"", show(&p.account)));
-                player_event(&mut scripts, world, player_id, &p, "playerleaves", out, log);
+                for event in ["playerleaves", "playerlogout"] {
+                    player_event(&mut scripts, world, player_id, &p, event, out, log);
+                }
             }
         }
         Message::PlayerLevel { player_id, level } => {
@@ -567,7 +563,10 @@ fn player_event(
     }
     scripts.set_nicks(nick_table(world));
     scripts.set_gear(gear_table(world));
-    let produced = scripts.on_player(player_id, player, event);
+    let produced = match event {
+        "playerlogin" | "playerlogout" => scripts.on_login(player_id, player, event),
+        _ => scripts.on_player(player_id, player, event),
+    };
     log_produced(&produced, log);
     log_script_lines(scripts, log);
     out.extend(produced.messages);
