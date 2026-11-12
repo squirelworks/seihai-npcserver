@@ -54,6 +54,19 @@ pub mod id {
     pub const STOP_MIDI: u8 = 0x4A;
     pub const NPC_SHAPE: u8 = 0x4B;
     pub const NPC_TRIGGER_ACTION: u8 = 0x4C;
+    pub const NC_NPC: u8 = 0x80;
+    pub const NC_GET: u8 = 0x81;
+    pub const NC_TEXT: u8 = 0x82;
+    pub const NC_SCRIPT_SET: u8 = 0x83;
+    pub const NC_NPC_DELETE: u8 = 0x84;
+}
+
+/// What an `NC_GET` asks for.
+pub mod nc_get {
+    /// The NPC's script.
+    pub const SCRIPT: u8 = 0;
+    /// The NPC's attributes, one `name=value` a line.
+    pub const ATTRIBUTES: u8 = 1;
 }
 
 /// One link message.
@@ -186,6 +199,37 @@ pub enum Message {
         action: Vec<u8>,
         params: Vec<u8>,
     },
+    /// NPC Control: one database NPC, for the NC's NPC list (NPC → GS).
+    NcNpc {
+        npc_id: u32,
+        name: Vec<u8>,
+        kind: Vec<u8>,
+        level: Vec<u8>,
+    },
+    /// NPC Control: the script or attributes of an NPC (GS → NPC).
+    /// `request` comes back in the `NC_TEXT` that answers it.
+    NcGet {
+        request: u32,
+        npc_id: u32,
+        what: u8,
+    },
+    /// NPC Control: the answer to `NC_GET` (NPC → GS). `found` is false
+    /// for an id the NPC-server does not have.
+    NcText {
+        request: u32,
+        found: bool,
+        text: Vec<u8>,
+    },
+    /// NPC Control: a new script for an NPC (GS → NPC).
+    NcScriptSet {
+        npc_id: u32,
+        script: Vec<u8>,
+    },
+    /// NPC Control: take an NPC out of the database (GS → NPC); and, back,
+    /// that it is out (NPC → GS).
+    NcNpcDelete {
+        npc_id: u32,
+    },
     /// A message this code does not know. Kept so it can be logged and skipped.
     Unknown {
         id: u8,
@@ -225,6 +269,11 @@ impl Message {
             Message::StopMidi { .. } => id::STOP_MIDI,
             Message::NpcShape { .. } => id::NPC_SHAPE,
             Message::NpcTriggerAction { .. } => id::NPC_TRIGGER_ACTION,
+            Message::NcNpc { .. } => id::NC_NPC,
+            Message::NcGet { .. } => id::NC_GET,
+            Message::NcText { .. } => id::NC_TEXT,
+            Message::NcScriptSet { .. } => id::NC_SCRIPT_SET,
+            Message::NcNpcDelete { .. } => id::NC_NPC_DELETE,
             Message::Unknown { id, .. } => *id,
         }
     }
@@ -384,6 +433,40 @@ impl Message {
                 put_str(&mut d, action)?;
                 put_str(&mut d, params)?;
             }
+            Message::NcNpc {
+                npc_id,
+                name,
+                kind,
+                level,
+            } => {
+                d.extend_from_slice(&npc_id.to_be_bytes());
+                put_str(&mut d, name)?;
+                put_str(&mut d, kind)?;
+                put_str(&mut d, level)?;
+            }
+            Message::NcGet {
+                request,
+                npc_id,
+                what,
+            } => {
+                d.extend_from_slice(&request.to_be_bytes());
+                d.extend_from_slice(&npc_id.to_be_bytes());
+                d.push(*what);
+            }
+            Message::NcText {
+                request,
+                found,
+                text,
+            } => {
+                d.extend_from_slice(&request.to_be_bytes());
+                d.push(u8::from(*found));
+                put_blob(&mut d, text)?;
+            }
+            Message::NcScriptSet { npc_id, script } => {
+                d.extend_from_slice(&npc_id.to_be_bytes());
+                put_blob(&mut d, script)?;
+            }
+            Message::NcNpcDelete { npc_id } => d.extend_from_slice(&npc_id.to_be_bytes()),
             Message::Unknown { data, .. } => d.extend_from_slice(data),
         }
         let len = u32::try_from(d.len()).map_err(|_| invalid("message over 4 GiB"))?;
@@ -514,6 +597,27 @@ impl Message {
                 action: r.str()?,
                 params: r.str()?,
             },
+            id::NC_NPC => Message::NcNpc {
+                npc_id: r.u32()?,
+                name: r.str()?,
+                kind: r.str()?,
+                level: r.str()?,
+            },
+            id::NC_GET => Message::NcGet {
+                request: r.u32()?,
+                npc_id: r.u32()?,
+                what: r.byte()?,
+            },
+            id::NC_TEXT => Message::NcText {
+                request: r.u32()?,
+                found: r.byte()? != 0,
+                text: r.blob()?,
+            },
+            id::NC_SCRIPT_SET => Message::NcScriptSet {
+                npc_id: r.u32()?,
+                script: r.blob()?,
+            },
+            id::NC_NPC_DELETE => Message::NcNpcDelete { npc_id: r.u32()? },
             other => Message::Unknown {
                 id: other,
                 data: data.to_vec(),
@@ -819,6 +923,27 @@ mod tests {
                 action: b"open".to_vec(),
                 params: b"red,door".to_vec(),
             },
+            Message::NcNpc {
+                npc_id: 3,
+                name: b"bell".to_vec(),
+                kind: b"CONTROL".to_vec(),
+                level: b"a.nw".to_vec(),
+            },
+            Message::NcGet {
+                request: 9,
+                npc_id: 3,
+                what: nc_get::ATTRIBUTES,
+            },
+            Message::NcText {
+                request: 9,
+                found: true,
+                text: b"if (created) {\n  message hi;\n}".to_vec(),
+            },
+            Message::NcScriptSet {
+                npc_id: 3,
+                script: b"if (playerenters) { message hi; }".to_vec(),
+            },
+            Message::NcNpcDelete { npc_id: 3 },
             Message::Unknown {
                 id: 0x99,
                 data: vec![1, 2, 3],

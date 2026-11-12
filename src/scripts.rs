@@ -376,21 +376,147 @@ impl Scripts {
             return Produced::default();
         }
         self.announced = true;
-        let messages = self
+        let messages: Vec<Message> = self
             .npcs
             .iter()
             // A level-less NPC is not in any level, so no player sees it.
             .filter(|n| !n.level.is_empty())
-            .map(|n| Message::NpcAdded {
-                npc_id: n.id,
-                level: n.level.clone(),
-                props: effects::place_props(&n.image, n.x, n.y),
-            })
+            .map(added)
             .collect();
         Produced {
             messages,
             notes: Vec::new(),
         }
+    }
+
+    /// NPC Control: the NPC list, an `NC_NPC` for every NPC in the
+    /// database. The session sends it once the scripts start.
+    pub fn nc_list(&self) -> Vec<Message> {
+        self.npcs.iter().map(nc_npc).collect()
+    }
+
+    /// NPC Control: an NPC's script or attributes (`NC_GET`).
+    pub fn nc_get(&self, request: u32, npc_id: u32, what: u8) -> Message {
+        let Some(n) = self.npcs.iter().find(|n| n.id == npc_id) else {
+            return Message::NcText {
+                request,
+                found: false,
+                text: Vec::new(),
+            };
+        };
+        let text = if what == crate::link::nc_get::SCRIPT {
+            latin1_bytes(&n.script)
+        } else {
+            let mut t = format!(
+                "name={}\nlevel={}\nx={}\ny={}\nimage={}\n",
+                n.name,
+                show(&n.level),
+                n.x,
+                n.y,
+                n.image
+            );
+            for (k, v) in &n.props {
+                t.push_str(&format!("{}={v}\n", k.to_ascii_lowercase()));
+            }
+            latin1_bytes(&t)
+        };
+        Message::NcText {
+            request,
+            found: true,
+            text,
+        }
+    }
+
+    /// NPC Control: a new script for an NPC (`NC_SCRIPT_SET`). The NPC's
+    /// file gets it, and the NPCs of its level start again (their
+    /// `created` runs once more), so the new script runs at once.
+    pub fn nc_set_script(&mut self, npc_id: u32, script: &str) -> Result<Produced, String> {
+        let n = self
+            .npcs
+            .iter_mut()
+            .find(|n| n.id == npc_id)
+            .ok_or_else(|| format!("no NPC {npc_id}"))?;
+        if let Some(path) = &n.path {
+            let text = String::from_utf8_lossy(
+                &std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?,
+            )
+            .into_owned();
+            let new = crate::npcdb::with_script(&text, n.format, script);
+            write_file(path, &new).map_err(|e| format!("{}: {e}", path.display()))?;
+        }
+        n.script = script.to_string();
+        let level = n.level.clone();
+        Ok(self.restart_level(&level))
+    }
+
+    /// NPC Control: take an NPC out (`NC_NPC_DELETE`). Its file is renamed
+    /// to `.txt.deleted`, which the database does not read, so it can be
+    /// put back by hand.
+    pub fn nc_delete(&mut self, npc_id: u32) -> Result<Produced, String> {
+        let i = self
+            .npcs
+            .iter()
+            .position(|n| n.id == npc_id)
+            .ok_or_else(|| format!("no NPC {npc_id}"))?;
+        if let Some(path) = &self.npcs[i].path {
+            let gone = path.with_extension("txt.deleted");
+            std::fs::rename(path, &gone).map_err(|e| format!("{}: {e}", path.display()))?;
+        }
+        let n = self.npcs.remove(i);
+        self.npc_count = self.npc_count.saturating_sub(1);
+        let mut produced = Produced::default();
+        if !n.level.is_empty() {
+            produced.messages.push(Message::NpcDeleted { npc_id });
+        }
+        produced.append(self.restart_level(&n.level));
+        // Last, so NPC Control drops it from its list only once it is
+        // gone. `NPC_DELETED` alone does not say so: a restart sends it too.
+        produced.messages.push(Message::NcNpcDelete { npc_id });
+        Ok(produced)
+    }
+
+    /// Build `level`'s script world again from the database and, once the
+    /// scripts run, start it. The players see the level's NPCs go and come
+    /// back with their new state.
+    fn restart_level(&mut self, level: &[u8]) -> Produced {
+        let mut produced = Produced::default();
+        let mine: Vec<NpcDef> = self
+            .npcs
+            .iter()
+            .filter(|n| n.level == level)
+            .cloned()
+            .collect();
+        if !level.is_empty() && self.announced {
+            for n in &mine {
+                produced.messages.push(Message::NpcDeleted { npc_id: n.id });
+            }
+        }
+        if mine.is_empty() {
+            self.levels.remove(level);
+            return produced;
+        }
+        let mut w = ScriptWorld::new(self.era);
+        w.set_online(true, true);
+        for n in &mine {
+            w.add(ObjSpec::npc(&n.image, n.x, n.y, &n.script).with_tag(n.id as usize));
+        }
+        self.levels.insert(level.to_vec(), w);
+        self.apply_server_flags();
+        if self.announced {
+            for n in &mine {
+                if !level.is_empty() {
+                    produced.messages.push(added(n));
+                }
+                produced.messages.push(nc_npc(n));
+            }
+        }
+        if self.started {
+            if let Some(w) = self.levels.get_mut(level) {
+                w.start_all();
+            }
+            produced.append(self.collect(level, None));
+        }
+        produced
     }
 
     fn collect_all(&mut self, player: Option<u16>) -> Produced {
@@ -484,6 +610,40 @@ impl Scripts {
         }
         produced
     }
+}
+
+/// `NPC_ADDED` for a database NPC.
+fn added(n: &NpcDef) -> Message {
+    Message::NpcAdded {
+        npc_id: n.id,
+        level: n.level.clone(),
+        props: effects::place_props(&n.image, n.x, n.y),
+    }
+}
+
+/// `NC_NPC` for a database NPC: its name, `TYPE` (empty when none) and
+/// level.
+fn nc_npc(n: &NpcDef) -> Message {
+    Message::NcNpc {
+        npc_id: n.id,
+        name: latin1_bytes(&n.name),
+        kind: latin1_bytes(n.kind().unwrap_or("")),
+        level: n.level.clone(),
+    }
+}
+
+/// Text as Latin-1 bytes; characters past U+00FF become `?`.
+fn latin1_bytes(s: &str) -> Vec<u8> {
+    s.chars()
+        .map(|c| u8::try_from(u32::from(c)).unwrap_or(b'?'))
+        .collect()
+}
+
+/// Write through a temporary file, so a failed write keeps the old one.
+fn write_file(path: &Path, text: &str) -> std::io::Result<()> {
+    let tmp = path.with_extension("txt.new");
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, path)
 }
 
 /// `object N: line L: `addweapon Name` ignored (unknown command)`.
@@ -825,6 +985,103 @@ mod tests {
             .iter()
             .filter_map(message_of)
             .any(|t| t.contains("read me")));
+    }
+
+    #[test]
+    fn npc_control_reads_sets_and_deletes() {
+        let dir = std::env::temp_dir().join(format!("seihai-nc-world-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("npcs")).unwrap();
+        std::fs::write(
+            dir.join("npcs/bell.txt"),
+            "LEVEL start.nw\nX 5\nY 6\nIMAGE bell.png\nSCRIPT\nif (created) { message ding; }\nSCRIPTEND\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("npcs/npcControl.txt"),
+            "GRNPC001\nNAME Control\nTYPE CONTROL\nSTARTLEVEL \nNPCSCRIPT\nif (playerlogin) { message x; }\nNPCSCRIPTEND\n",
+        )
+        .unwrap();
+        let mut s = Scripts::with_world(Era::V21, &dir);
+        s.open_database().unwrap();
+        s.start();
+        // The NC list: both NPCs, with name, type and level.
+        let list: Vec<_> = s
+            .nc_list()
+            .iter()
+            .filter_map(|m| match m {
+                Message::NcNpc {
+                    npc_id,
+                    name,
+                    kind,
+                    level,
+                } => Some((*npc_id, show(name), show(kind), show(level))),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            list,
+            [
+                (1, "bell".into(), "".into(), "start.nw".into()),
+                (2, "Control".into(), "CONTROL".into(), "".into())
+            ]
+        );
+        let text = |m: Message| match m {
+            Message::NcText { found, text, .. } => {
+                (found, String::from_utf8_lossy(&text).into_owned())
+            }
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(
+            text(s.nc_get(7, 1, crate::link::nc_get::SCRIPT)),
+            (true, "if (created) { message ding; }".into())
+        );
+        let (found, attrs) = text(s.nc_get(8, 2, crate::link::nc_get::ATTRIBUTES));
+        assert!(
+            found && attrs.contains("name=Control\n") && attrs.contains("type=CONTROL\n"),
+            "{attrs}"
+        );
+        assert!(!text(s.nc_get(9, 99, 0)).0);
+
+        // A new script: in the file, and running at once.
+        let set = s
+            .nc_set_script(1, "if (created) { message dong; }")
+            .unwrap();
+        assert!(set
+            .messages
+            .iter()
+            .any(|m| matches!(m, Message::NpcDeleted { npc_id: 1 })));
+        assert!(set
+            .messages
+            .iter()
+            .any(|m| matches!(m, Message::NpcAdded { npc_id: 1, .. })));
+        assert!(set
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|t| t.contains("dong")));
+        let file = std::fs::read_to_string(dir.join("npcs/bell.txt")).unwrap();
+        assert!(
+            file.starts_with("LEVEL start.nw\nX 5\n") && file.contains("message dong;"),
+            "{file}"
+        );
+        assert!(s.nc_set_script(99, "x").is_err());
+
+        // Deleted: gone from the players and the list, the file put aside.
+        let del = s.nc_delete(1).unwrap();
+        assert!(del
+            .messages
+            .iter()
+            .any(|m| matches!(m, Message::NpcDeleted { npc_id: 1 })));
+        assert_eq!(
+            del.messages.last(),
+            Some(&Message::NcNpcDelete { npc_id: 1 })
+        );
+        assert!(!dir.join("npcs/bell.txt").exists());
+        assert!(dir.join("npcs/bell.txt.deleted").exists());
+        assert!(!text(s.nc_get(10, 1, 0)).0);
+        assert_eq!(s.levels().count(), 0);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

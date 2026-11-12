@@ -412,6 +412,48 @@ fn handle(
             log,
             "NPC_ADDED from the gserver is ignored",
         ),
+        Message::NcGet {
+            request,
+            npc_id,
+            what,
+        } => match scripts.as_deref() {
+            Some(s) => out.push(s.nc_get(request, npc_id, what)),
+            None => out.push(Message::NcText {
+                request,
+                found: false,
+                text: Vec::new(),
+            }),
+        },
+        Message::NcScriptSet { npc_id, script } => {
+            let script = seihai_core::protocol::latin1(&script);
+            match scripts
+                .as_deref_mut()
+                .map(|s| s.nc_set_script(npc_id, &script))
+            {
+                Some(Ok(produced)) => {
+                    log(format!("NPC Control: new script for NPC {npc_id}"));
+                    log_produced(&produced, log);
+                    out.extend(produced.messages);
+                }
+                Some(Err(e)) => log(format!("NPC Control: script set refused: {e}")),
+                None => log("NPC Control: script set with no scripts loaded".into()),
+            }
+        }
+        Message::NcNpcDelete { npc_id } => match scripts.map(|s| s.nc_delete(npc_id)) {
+            Some(Ok(produced)) => {
+                log(format!("NPC Control: NPC {npc_id} deleted"));
+                log_produced(&produced, log);
+                out.extend(produced.messages);
+            }
+            Some(Err(e)) => log(format!("NPC Control: delete refused: {e}")),
+            None => log("NPC Control: delete with no scripts loaded".into()),
+        },
+        Message::NcNpc { .. } | Message::NcText { .. } => note_once(
+            seen_unknown,
+            link::id::NC_NPC,
+            log,
+            "NC_NPC/NC_TEXT from the gserver are ignored",
+        ),
         Message::NpcProps { .. } => note_once(
             seen_unknown,
             link::id::NPC_PROPS,
@@ -543,7 +585,10 @@ fn start_scripts(scripts: &mut Scripts, world: &World, log: Log) -> Vec<Message>
     let produced = scripts.start();
     log_produced(&produced, log);
     log_script_lines(scripts, log);
-    produced.messages
+    // The NPC Control list goes last: the gserver keeps it for NC logins.
+    let mut out = produced.messages;
+    out.extend(scripts.nc_list());
+    out
 }
 
 fn player_event(
