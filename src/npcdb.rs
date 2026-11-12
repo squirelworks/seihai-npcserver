@@ -77,6 +77,9 @@ pub struct NpcDef {
     /// and keys this reader does not know). Empty for our own format.
     pub props: BTreeMap<String, String>,
     pub format: NpcFormat,
+    /// The file it was read from, if any. NPC Control writes a new script
+    /// back to it.
+    pub path: Option<std::path::PathBuf>,
 }
 
 impl NpcDef {
@@ -241,7 +244,10 @@ pub fn load(world: &Path) -> io::Result<(Vec<NpcDef>, Vec<String>)> {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
         match parse_file(i as u32 + 1, &stem, &text) {
-            Ok(n) => parsed.push((path, n)),
+            Ok(mut n) => {
+                n.path = Some(path.clone());
+                parsed.push((path, n))
+            }
             Err(e) => problems.push(format!("{}: {e}", path.display())),
         }
     }
@@ -265,11 +271,78 @@ pub fn load(world: &Path) -> io::Result<(Vec<NpcDef>, Vec<String>)> {
     Ok((npcs, problems))
 }
 
+/// `text`, an NPC file in `format`, with its script replaced by
+/// `script`. Every other line stays as it was. A file with no script block
+/// gets one at the end.
+pub fn with_script(text: &str, format: NpcFormat, script: &str) -> String {
+    let (open, close) = match format {
+        NpcFormat::Seihai => ("SCRIPT", "SCRIPTEND"),
+        NpcFormat::Grnpc => ("NPCSCRIPT", "NPCSCRIPTEND"),
+    };
+    let mut out = String::new();
+    let mut lines = text.lines();
+    let mut done = false;
+    while let Some(line) = lines.next() {
+        if !done && line.trim_end_matches('\r') == open {
+            for l in lines.by_ref() {
+                if l.trim_end_matches('\r') == close {
+                    break;
+                }
+            }
+            push_block(&mut out, open, close, script);
+            done = true;
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if !done {
+        push_block(&mut out, open, close, script);
+    }
+    out
+}
+
+fn push_block(out: &mut String, open: &str, close: &str, script: &str) {
+    out.push_str(open);
+    out.push('\n');
+    for l in script.lines() {
+        // A line that would end the block early is kept with a space.
+        if l.trim_end() == close {
+            out.push(' ');
+        }
+        out.push_str(l);
+        out.push('\n');
+    }
+    out.push_str(close);
+    out.push('\n');
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const SAMPLE: &str = "LEVEL onlinestartlocal.nw\nX 30\nY 30.5\nIMAGE block.png\nSCRIPT\nif (created) {\n  message hello;\n}\nSCRIPTEND\n";
+
+    #[test]
+    fn a_new_script_keeps_the_rest_of_the_file() {
+        let text = with_script(
+            SAMPLE,
+            NpcFormat::Seihai,
+            "if (playerenters) {\n  message hi;\n}",
+        );
+        let n = parse(1, &text).unwrap();
+        assert_eq!(n.script, "if (playerenters) {\n  message hi;\n}");
+        assert_eq!(
+            (n.level.as_slice(), n.x, n.image.as_str()),
+            (&b"onlinestartlocal.nw"[..], 30.0, "block.png")
+        );
+        let g = "GRNPC001\nNAME Bell\nTYPE CONTROL\nNPCSCRIPT\nold;\nNPCSCRIPTEND\nSHAPE 32 48\n";
+        let text = with_script(g, NpcFormat::Grnpc, "new;\nNPCSCRIPTEND");
+        let n = parse_grnpc(1, "x", &text).unwrap();
+        assert_eq!(n.script, "new;\n NPCSCRIPTEND");
+        assert_eq!(n.props.get("SHAPE").map(String::as_str), Some("32 48"));
+        assert_eq!(n.kind(), Some("CONTROL"));
+    }
 
     #[test]
     fn parses_the_sample() {
