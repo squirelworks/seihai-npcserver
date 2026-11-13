@@ -116,7 +116,7 @@ fn main() -> ExitCode {
         let mut scripts = args
             .world
             .as_ref()
-            .map(|w| Scripts::with_world(Era::V21, w));
+            .map(|w| Scripts::with_world(Era::V217, w));
         let (end, world) = session::run(
             &args.gserver,
             &token,
