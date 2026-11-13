@@ -66,7 +66,7 @@ pub struct Scripts {
 
 impl Scripts {
     /// `era` picks the GS1 vocabulary. Server-side scripts in 2001 were
-    /// 2.x scripts, so the default is [`Era::V21`].
+    /// 2.x scripts, so the default is [`Era::V217`].
     pub fn new(era: Era) -> Self {
         Self {
             era,
@@ -752,7 +752,7 @@ mod tests {
 
     #[test]
     fn created_runs_on_start() {
-        let mut s = Scripts::new(Era::V21);
+        let mut s = Scripts::new(Era::V217);
         s.load(&[npc("if (created) { message hello; }")]);
         let produced = s.start();
         assert!(matches!(
@@ -771,7 +771,7 @@ mod tests {
 
     #[test]
     fn timeout_fires_on_the_tick() {
-        let mut s = Scripts::new(Era::V21);
+        let mut s = Scripts::new(Era::V217);
         s.load(&[npc(
             "if (created) { timeout = 0.1; } if (timeout) { setcharprop #c,hi; }",
         )]);
@@ -793,7 +793,7 @@ mod tests {
 
     #[test]
     fn playerenters_fills_nick_account_and_position() {
-        let mut s = Scripts::new(Era::V21);
+        let mut s = Scripts::new(Era::V217);
         s.load(&[npc(
             "if (playerenters) { message #n|#a|#v(playerx),#v(playery); }",
         )]);
@@ -821,7 +821,7 @@ mod tests {
     fn playerleaves_runs() {
         // seihai-core v0.0.6 lists `playerleaves` as a 2.1-era event
         // (seihai #390); with v0.0.5 this block never ran.
-        let mut s = Scripts::new(Era::V21);
+        let mut s = Scripts::new(Era::V217);
         s.load(&[npc("if (playerleaves) { message bye #n; }")]);
         let _ = s.start();
         let mut player = Player {
@@ -845,7 +845,7 @@ mod tests {
 
     #[test]
     fn hash_n_with_an_id_expands_when_that_player_is_online() {
-        let mut s = Scripts::new(Era::V21);
+        let mut s = Scripts::new(Era::V217);
         s.set_nicks(BTreeMap::from([(2, "test205".into())]));
         s.load(&[npc("if (playerenters) { message #n(2) #n(9); }")]);
         let _ = s.start();
@@ -865,7 +865,7 @@ mod tests {
 
     #[test]
     fn say2_toweapons_showcharacter_and_addweapon_are_sent() {
-        let mut s = Scripts::new(Era::V21);
+        let mut s = Scripts::new(Era::V217);
         s.set_nicks(BTreeMap::from([(2, "test205".into())]));
         s.load(&[npc(
             "if (playerenters) { say2 Hello #n(2); toweapons Bow; showcharacter; play jump.wav; setshape 1,32,32; sendrpgmessage hi; addweapon Sword; }",
@@ -961,7 +961,7 @@ mod tests {
             "GRNPC001\nNAME Sign\nIMAGE sign.png\nSTARTLEVEL start.nw\nSTARTX 5\nSTARTY 6\nNPCSCRIPT\nif (created) { message read me; }\nNPCSCRIPTEND\n",
         )
         .unwrap();
-        let mut s = Scripts::with_world(Era::V21, &dir);
+        let mut s = Scripts::with_world(Era::V217, &dir);
         let (count, problems) = s.open_database().unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(count, 2);
@@ -1002,7 +1002,7 @@ mod tests {
             "GRNPC001\nNAME Control\nTYPE CONTROL\nSTARTLEVEL \nNPCSCRIPT\nif (playerlogin) { message x; }\nNPCSCRIPTEND\n",
         )
         .unwrap();
-        let mut s = Scripts::with_world(Era::V21, &dir);
+        let mut s = Scripts::with_world(Era::V217, &dir);
         s.open_database().unwrap();
         s.start();
         // The NC list: both NPCs, with name, type and level.
@@ -1086,7 +1086,7 @@ mod tests {
 
     #[test]
     fn level_less_npcs_run_and_send_only_what_has_somewhere_to_go() {
-        let mut s = Scripts::new(Era::V21);
+        let mut s = Scripts::new(Era::V217);
         s.load(&[NpcDef {
             level: Vec::new(),
             ..npc("if (created) { set server.control; message hi; timeout = 0.05; }\nif (timeout) { set server.ticked; }\nif (playerenters) { set server.wrong; }")
@@ -1118,7 +1118,7 @@ mod tests {
     /// #416), so a level-less NPC's blocks run for each player.
     #[test]
     fn level_less_npcs_get_playerlogin_and_playerlogout() {
-        let mut s = Scripts::new(Era::V21);
+        let mut s = Scripts::new(Era::V217);
         s.load(&[NpcDef {
             level: Vec::new(),
             ..npc("if (playerlogin) { set server.in_#a; }\nif (playerlogout) { set server.out_#a; }\nif (playerenters) { set server.wrong; }")
@@ -1155,7 +1155,7 @@ mod tests {
 
     #[test]
     fn a_scripts_triggeraction_reaches_the_npcs_under_the_point() {
-        let mut s = Scripts::new(Era::V21);
+        let mut s = Scripts::new(Era::V217);
         let bell = NpcDef {
             id: 8,
             x: 10.0,
@@ -1183,7 +1183,7 @@ mod tests {
 
     #[test]
     fn a_triggeraction_that_answers_itself_is_cut_off() {
-        let mut s = Scripts::new(Era::V21);
+        let mut s = Scripts::new(Era::V217);
         s.load(&[npc(
             "if (created) { triggeraction 30,30,ring,; }\nif (actionring) { triggeraction 30,30,ring,; }",
         )]);
@@ -1203,7 +1203,7 @@ mod tests {
 
     #[test]
     fn pm_flags_and_trigger_run() {
-        let mut s = Scripts::new(Era::V21);
+        let mut s = Scripts::new(Era::V217);
         s.load(&[npc(
             "if (playerchats) { message #c/#v(server.door); }\nif (actionopen) { message triggered; }",
         )]);

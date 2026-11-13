@@ -219,7 +219,7 @@ SCRIPTEND
     let server = thread::spawn(move || mock::serve_one(&listener, &Script::lab(TOKEN)).unwrap());
     let mut lines = Vec::new();
     let mut scripts = seihai_npcserver::scripts::Scripts::with_world(
-        seihai_core::scripting::engine::Era::V21,
+        seihai_core::scripting::engine::Era::V217,
         &dir,
     );
     let timing = Timing {
@@ -281,7 +281,7 @@ fn scripts_do_not_load_when_rejected() {
     )
     .unwrap();
     let mut scripts = seihai_npcserver::scripts::Scripts::with_world(
-        seihai_core::scripting::engine::Era::V21,
+        seihai_core::scripting::engine::Era::V217,
         &dir,
     );
     let (end, _, lines, _) = {
@@ -373,7 +373,7 @@ SCRIPTEND
     });
 
     let mut scripts = seihai_npcserver::scripts::Scripts::with_world(
-        seihai_core::scripting::engine::Era::V21,
+        seihai_core::scripting::engine::Era::V217,
         &dir,
     );
     let timing = Timing {
@@ -528,7 +528,7 @@ SCRIPTEND
     });
 
     let mut scripts = seihai_npcserver::scripts::Scripts::with_world(
-        seihai_core::scripting::engine::Era::V21,
+        seihai_core::scripting::engine::Era::V217,
         &dir,
     );
     let timing = Timing {

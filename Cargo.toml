@@ -9,4 +9,4 @@ publish = false
 
 [dependencies]
 # Protocol, framing, version profiles and scripting shared with the Seihai client.
-seihai-core = { git = "https://github.com/squirelworks/seihai-core", tag = "v0.0.16", default-features = false }
+seihai-core = { git = "https://github.com/squirelworks/seihai-core", tag = "v0.0.26", default-features = false }
