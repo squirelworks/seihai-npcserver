@@ -72,8 +72,8 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
       `SET_PLAYER_PROPS` prop 2, the same half-hearts value as
       `playerhearts` (the reference server treats `hp` that way). `sendtoserver`
       and setting the selected weapon stay logged and skipped on purpose:
-      the reference server's scripts have neither. Its `sendtonc` and
-      `sendtorc` could be a later item.
+      the reference server's scripts have neither. `sendtonc` and
+      `sendtorc` are link messages now (see Open).
 
 ## Open
 
@@ -94,10 +94,19 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
 - [x] **`playerlogin`/`playerlogout` blocks run.** `seihai-core` `v0.0.7`
       lists them (seihai #416). Test:
       `scripts::tests::level_less_npcs_get_playerlogin_and_playerlogout`.
-- [ ] **`sendtonc` and `sendtorc`.** The pinned core already emits these
-      commands, but `effects` logs and skips them. RC/NC login support
-      (squirelworks/seihai-gserver#52) is complete; effect mapping, link
-      messages and staff delivery still need implementation and a regression.
+- [x] **`sendtonc` and `sendtorc`.** Sent as `SEND_TO_NC` (`0x4D`) and
+      `SEND_TO_RC` (`0x4E`): the script's text, with `#a` and bare `#n`
+      already expanded by the engine and `#n(id)` expanded here. A
+      level-less NPC's line goes out. Tests:
+      `effects::tests::sendtonc_and_sendtorc_are_staff_lines`,
+      `scripts::tests::level_less_staff_lines_go_out`, and the loopback
+      `chat_weapons_pm_flags_and_trigger_round_trip`. The gserver still
+      has to show the lines to logged-in NPC Control and Remote Control;
+      until then it logs and skips the two ids.
+- [ ] **Gserver shows `SEND_TO_NC` and `SEND_TO_RC`.** That delivery is
+      `seihai-gserver`'s: every logged-in NPC Control (`sendtonc`) and
+      Remote Control (`sendtorc`). This repo's mock already receives the
+      messages. Not started here.
 - [x] **A v0.1.1 release.** Published 2026-11-12; notes in
       `docs/releases/v0.1.1.md`. The Rust gserver now pins this crate's
       later commit `21de1ca` (#34), which uses seihai-core v0.1.0.

@@ -83,6 +83,7 @@ in progress; it runs when the session exits.
    | `StopSound`, `StopMidi` | `STOP_SOUND`, `STOP_MIDI` for the script's level |
    | `SetShape` | `NPC_SHAPE` (kind, width and height in pixels) |
    | `TriggerAction` (a script's own `triggeraction`) | `NPC_TRIGGER_ACTION` for the script's level. The engine itself fires it on the NPCs in that level first (`action<name>`, params split on commas) |
+   | `Command` `sendtonc`, `sendtorc` | `SEND_TO_NC` (`0x4D`) and `SEND_TO_RC` (`0x4E`): the text, with `#n(id)` expanded. Not tied to a level or a player. The gserver shows them to logged-in NPC Control and Remote Control |
    | `say`, `sendrpgmessage`, `sendtoserver`, other commands, other player variables (the selected weapon among them), flags that are not `server.` | log once, unsupported. No link message for them. `sendtoserver` and setting the selected weapon stay this way on purpose: the reference server's scripts have neither |
 
 4. **Done.** Before `playerenters` / `playerleaves`, the level's `PlayerView`
@@ -167,7 +168,8 @@ NPCSCRIPTEND
   `PLAYER_LEFT`; login before `playerenters`, logout after `playerleaves`).
   It gets no `NPC_ADDED`, and what only makes sense in a level (its own
   props, sounds, `NPC_TRIGGER_ACTION`) is dropped with one log line. Player
-  props, warps, weapons, PMs and flags go out as usual. `playerlogin` and
+  props, warps, weapons, PMs, flags and staff lines (`sendtonc`,
+  `sendtorc`) go out as usual. `playerlogin` and
   `playerlogout` are events from `seihai-core` `v0.0.7` (seihai #416).
 
 ## Decisions (ask Squirrel before changing)
