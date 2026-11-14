@@ -589,6 +589,18 @@ fn handle(
             log,
             "NPC_TRIGGER_ACTION from the gserver is ignored",
         ),
+        Message::SendToNc { .. } => note_once(
+            seen_unknown,
+            link::id::SEND_TO_NC,
+            log,
+            "SEND_TO_NC from the gserver is ignored",
+        ),
+        Message::SendToRc { .. } => note_once(
+            seen_unknown,
+            link::id::SEND_TO_RC,
+            log,
+            "SEND_TO_RC from the gserver is ignored",
+        ),
         Message::Ping { nonce } => out.push(Message::Pong { nonce }),
         Message::Pong { .. } => {}
         Message::Bye { reason } => {

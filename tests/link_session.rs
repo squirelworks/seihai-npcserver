@@ -544,6 +544,8 @@ if (playerenters) {
   playerswordpower = 3;
   playerbombs = 7;
   sendrpgmessage hi;
+  sendtorc #a logged in #n(2) #n(9);
+  sendtonc shop;
   addweapon Sword;
 }
 if (playerchats) { message #c/#v(server.door); }
@@ -765,7 +767,27 @@ SCRIPTEND
             .count();
         assert_eq!(hits, 1, "{unsupported} should be logged once in:\n{text}");
     }
-    for sent in ["play", "stopsound", "stopmidi", "setshape", "triggeraction"] {
+    assert!(
+        got.contains(&Message::SendToRc {
+            text: b"test205 logged in test205 #n(9)".to_vec(),
+        }),
+        "sendtorc missing in {got:?}\n{lines:#?}"
+    );
+    assert!(
+        got.contains(&Message::SendToNc {
+            text: b"shop".to_vec(),
+        }),
+        "sendtonc missing in {got:?}\n{lines:#?}"
+    );
+    for sent in [
+        "play",
+        "stopsound",
+        "stopmidi",
+        "setshape",
+        "triggeraction",
+        "sendtonc",
+        "sendtorc",
+    ] {
         assert!(
             !text.contains(&format!("{sent} has no link message")),
             "{sent} is sent now, not logged:\n{text}"
