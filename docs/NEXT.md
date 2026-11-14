@@ -101,6 +101,15 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
 - [x] **A v0.1.1 release.** Published 2026-11-12; notes in
       `docs/releases/v0.1.1.md`. The Rust gserver now pins this crate's
       later commit `21de1ca` (#34), which uses seihai-core v0.1.0.
+- [x] **seihai-core pin `v0.2.16`.** `Cargo.toml` pins
+      `squirelworks/seihai-core` tag `v0.2.16`
+      (`8fb62fbfa2bc770412de8cc470e2f1269676667c`); it was tag `v0.1.0`
+      (`708e9e4c19e45bc3db85528e37013921fedb1f10`). `default-features`
+      stays off. No Rust source changed. On Linux, Rust 1.100, the
+      existing loopback `cargo test`, `cargo fmt --check` and
+      `cargo clippy --all-targets -- -D warnings` passed. No real client
+      was run, and macOS was not run. That records the pin, not a new
+      client result. The `21de1ca` (#34) line above still used `v0.1.0`.
 
 The remaining NPC Control editor and server-side GS2 work is tracked in
 roadmap #22. The level-NPC editor in servertools does not edit database NPCs;
