@@ -72,8 +72,8 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
       `SET_PLAYER_PROPS` prop 2, the same half-hearts value as
       `playerhearts` (the reference server treats `hp` that way). `sendtoserver`
       and setting the selected weapon stay logged and skipped on purpose:
-      the reference server's scripts have neither. Its `sendtonc` and
-      `sendtorc` could be a later item.
+      the reference server's scripts have neither. `sendtonc` and
+      `sendtorc` are link messages now (see Open).
 
 ## Open
 
@@ -94,10 +94,27 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
 - [x] **`playerlogin`/`playerlogout` blocks run.** `seihai-core` `v0.0.7`
       lists them (seihai #416). Test:
       `scripts::tests::level_less_npcs_get_playerlogin_and_playerlogout`.
-- [ ] **`sendtonc` and `sendtorc`.** The pinned core already emits these
-      commands, but `effects` logs and skips them. RC/NC login support
-      (squirelworks/seihai-gserver#52) is complete; effect mapping, link
-      messages and staff delivery still need implementation and a regression.
+- [x] **`sendtonc` and `sendtorc`.** Sent as `SEND_TO_NC` (`0x4D`) and
+      `SEND_TO_RC` (`0x4E`): the script's text, with `#a` and bare `#n`
+      already expanded by the engine and `#n(id)` expanded here. A
+      level-less NPC's line goes out. Tests:
+      `effects::tests::sendtonc_and_sendtorc_are_staff_lines`,
+      `scripts::tests::level_less_staff_lines_go_out`, and the loopback
+      `chat_weapons_pm_flags_and_trigger_round_trip`. The NPC-server
+      produces both. Intended recipient categories are logged-in NPC
+      Control for `sendtonc` and Remote Control for `sendtorc`. Consumer
+      delivery is pending: the gserver logs and skips `0x4D` and `0x4E`.
+      The exact policy (every NPC Control connection versus Remote
+      Control rights, and who is eligible) is unresolved; that decision
+      is still open.
+- [ ] **Gserver delivery of `SEND_TO_NC` and `SEND_TO_RC`.** Consumer
+      delivery is pending. The gserver logs and skips `0x4D` and `0x4E`.
+      Intended recipient categories are logged-in NPC Control for
+      `sendtonc` and Remote Control for `sendtorc`. The exact policy
+      (every NPC Control connection versus Remote Control rights, and
+      who is eligible) is unresolved; that decision is still open. This
+      repo's mock records the messages the NPC-server produces; it does
+      not decide who receives them. Not started on the gserver.
 - [x] **A v0.1.1 release.** Published 2026-11-12; notes in
       `docs/releases/v0.1.1.md`. The Rust gserver now pins this crate's
       later commit `21de1ca` (#34), which uses seihai-core v0.1.0.
