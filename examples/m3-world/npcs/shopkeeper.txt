@@ -1,6 +1,6 @@
 LEVEL m3_square.nw
 X 20
-Y 29
+Y 25
 IMAGE
 SCRIPT
 // The shop: say "buy" and 20 gralats become 10 bombs.

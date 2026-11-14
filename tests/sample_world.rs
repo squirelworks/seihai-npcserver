@@ -259,6 +259,58 @@ fn the_lamp_weapon_file_is_there() {
     assert!(lamp.starts_with("GRAWP001\nREALNAME Lamp\n"), "{lamp}");
 }
 
+/// Width and height from a PNG's IHDR chunk.
+fn png_size(bytes: &[u8]) -> (u32, u32) {
+    assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n") && &bytes[12..16] == b"IHDR");
+    let be = |b: &[u8]| u32::from_be_bytes([b[0], b[1], b[2], b[3]]);
+    (be(&bytes[16..20]), be(&bytes[20..24]))
+}
+
+/// Lab 2026-11-14: with `IMAGE bomb1.png` (a 128 by 320 sprite sheet) real
+/// 2.05 to 2.31 drew the whole sheet as the Lamp's icon, in the weapons
+/// list and over the gralat counter. The image must ship with the world
+/// and be icon-sized.
+#[test]
+fn the_lamp_icon_ships_with_the_world_and_is_icon_sized() {
+    let lamp = std::fs::read_to_string(format!("{WORLD}/weapons/Lamp.txt")).unwrap();
+    let image = lamp
+        .lines()
+        .find_map(|l| l.trim_end().strip_prefix("IMAGE "))
+        .expect("Lamp.txt has an IMAGE line");
+    let bytes = std::fs::read(format!("{WORLD}/files/{image}"))
+        .unwrap_or_else(|e| panic!("files/{image}: {e}"));
+    let (w, h) = png_size(&bytes);
+    assert!(w <= 32 && h <= 32, "{image} is {w}x{h}");
+}
+
+/// Lab 2026-11-14: the greeter and the shopkeeper stood on the same row
+/// (y 29), and every real client drew their long lines over each other.
+/// NPCs that talk on one level keep at least three rows apart.
+#[test]
+fn talking_npcs_on_a_level_do_not_share_a_row() {
+    let mut spots: Vec<(String, String, f32)> = Vec::new();
+    for entry in std::fs::read_dir(format!("{WORLD}/npcs")).unwrap() {
+        let text = std::fs::read_to_string(entry.unwrap().path()).unwrap();
+        if !text.contains("message ") {
+            continue;
+        }
+        let field = |k: &str| {
+            text.lines()
+                .find_map(|l| l.trim_end().strip_prefix(k).map(str::to_owned))
+                .unwrap()
+        };
+        spots.push((field("LEVEL "), field("X "), field("Y ").parse().unwrap()));
+    }
+    assert!(spots.len() >= 4, "{spots:?}");
+    for (i, a) in spots.iter().enumerate() {
+        for b in &spots[i + 1..] {
+            if a.0 == b.0 {
+                assert!((a.2 - b.2).abs() >= 3.0, "{a:?} and {b:?} share a row");
+            }
+        }
+    }
+}
+
 /// Over the link: a player saying "buy" (chat prop 12 in `PLAYER_PROPS`)
 /// reaches the shop, and the gserver echoing a chat line this server set
 /// does not count as the player talking.

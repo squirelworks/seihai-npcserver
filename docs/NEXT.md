@@ -117,5 +117,6 @@ squirelworks/seihai-gserver#62.
     so `playerrupees` and the rest read the player's real counts.
   - A `server.` flag a script sets is seen by every level at once, and a
     flag with no value reads as 1, so `if (server.gateopen)` works.
-- [ ] **Lab run** on seihai-gserver with real 2.05 rev 2, 2.17.1, 2.22 and
-      2.31 under Wine, and Seihai.
+- [x] **Lab run** on seihai-gserver with real 2.05 rev 2, 2.17.1, 2.22 and
+      2.31 under Wine, and Seihai: every step passed on all five
+      (`docs/lab/2026-11-14-m3-sample-world.md`).

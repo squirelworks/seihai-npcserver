@@ -7,7 +7,7 @@ and the doorway to the hall is open; with it:
 | NPC | Where | What it does | How |
 |---|---|---|---|
 | Greeter (`npcs/greeter.txt`) | `m3_square.nw` 32,29 | Welcomes each player by name. Anyone with under 20 gralats gets 30. Answers "hi". | `playerenters`, `playerrupees`, `playerchats` |
-| Shopkeeper (`npcs/shopkeeper.txt`) | `m3_square.nw` 20,29 | Say "buy": 20 gralats for 10 bombs, or "Sorry" with your count. | `playerchats`, `playerrupees`, `playerbombs` |
+| Shopkeeper (`npcs/shopkeeper.txt`) | `m3_square.nw` 20,25 | Say "buy": 20 gralats for 10 bombs, or "Sorry" with your count. | `playerchats`, `playerrupees`, `playerbombs` |
 | Gatekeeper (`npcs/gatekeeper.txt`) | `m3_square.nw` 45,22 | Say "open": sets the server flag `server.gateopen` for 30 seconds. | `set`/`unset server.`, `timeout` |
 | Gate (`npcs/gate.txt`) | `m3_square.nw` 41,20 | A block in the doorway to the hall. Hidden while `server.gateopen` is set, whoever set it (the gatekeeper or RC). | `server.` flag, `hide`/`show` |
 | Trainer (`npcs/trainer.txt`) | `m3_hall.nw` 31,41 | Gives every visitor the Lamp (`weapons/Lamp.txt`). | `playerenters`, `addweapon` |
@@ -28,6 +28,13 @@ seihai-gserver --world path/to/m3-world --verbose
 `config/server.txt` has `npcserver = auto`, so the gserver starts the
 NPC-server itself. It listens on `127.0.0.1:14802` and makes an account
 on first login (`create_accounts = true`): lab use only.
+
+`files/` holds the Lamp's icon, `m3lamp.png`, drawn for this world (a
+weapon's image is its icon in the weapons list and the item slot, so it
+has to be icon-sized). Real clients also ask the server for the gate's
+`block.png` and for player art (`head0.png`, `body.png`, `sword1.png`,
+`shield1.png`) and the `.gani` files they are missing: copy those into
+`files/` from a lab world that has them.
 
 ## Where the levels come from
 
