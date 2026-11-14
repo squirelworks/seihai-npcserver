@@ -77,11 +77,10 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
 
 ## Open
 
-- [ ] **`seihai-gserver` applies the messages.** It reads the milestone 1
-      messages but does not yet act on anything the NPC-server sends (NPC
-      props, player props, warps, PMs, weapons, flags, triggers, sounds,
-      shapes). That work is in `seihai-gserver` (its stage 5); milestone 3
-      here waits on it.
+- [x] **`seihai-gserver` applies the messages.** Merged in
+      squirelworks/seihai-gserver#62; its stage 5 issue #53 is closed.
+      The sample world and recorded milestone 3 lab run below exercise
+      this integration (#35, #36).
 - [x] **`playerleaves` runs.** `session` fires it, and `seihai-core`
       `v0.0.6` lists it as a 2.1-era event (seihai #390), so
       `if (playerleaves)` runs. Test: `scripts::tests::playerleaves_runs`.
@@ -95,10 +94,18 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
 - [x] **`playerlogin`/`playerlogout` blocks run.** `seihai-core` `v0.0.7`
       lists them (seihai #416). Test:
       `scripts::tests::level_less_npcs_get_playerlogin_and_playerlogout`.
-- [ ] **`sendtonc` and `sendtorc`.** The reference server's scripts have
-      them; a later item if wanted.
-- [ ] **A v0.1.1 release.** Notes in `docs/releases/v0.1.1.md`; the tag
-      waits on the owner. Then `seihai-gserver` moves off `v0.1.0`.
+- [ ] **`sendtonc` and `sendtorc`.** The pinned core already emits these
+      commands, but `effects` logs and skips them. RC/NC login support
+      (squirelworks/seihai-gserver#52) is complete; effect mapping, link
+      messages and staff delivery still need implementation and a regression.
+- [x] **A v0.1.1 release.** Published 2026-11-12; notes in
+      `docs/releases/v0.1.1.md`. The Rust gserver now pins this crate's
+      later commit `21de1ca` (#34), which uses seihai-core v0.1.0.
+
+The remaining NPC Control editor and server-side GS2 work is tracked in
+roadmap #22. The level-NPC editor in servertools does not edit database NPCs;
+the GS1-to-GS2 compiler issue (squirelworks/seihai-core#6) explicitly excludes
+the NPC-server's GS2 host integration.
 
 ## Milestone 3
 
