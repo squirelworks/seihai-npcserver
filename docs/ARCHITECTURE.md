@@ -25,7 +25,7 @@ the gserver to change players.
 | `session` | done (m2) | Connect, `HELLO`, wait for `WELCOME`, then the tick loop: read, run scripts, send their messages, keep-alive. Reader thread + `mpsc`, no async runtime. |
 | `world` | done (m2) | Levels and players as the gserver described them. Raw prop bytes per prop id. Nick, position, direction, hearts and chat are decoded for the player view. |
 | `npcdb` | done (m2) | Reads `<world>/npcs/*.txt`: our format and GServer-v2's `GRNPC001` files (below). |
-| `scripts` | done (m2) | One `seihai_core::scripting::engine::world::ScriptWorld` per level. `created`, `timeout`, `playerenters`, `playerchats` (from `PM_TO_NPC`) and `action*` (from `TRIGGER_ACTION`) run. `playerleaves` runs since `seihai-core` v0.0.6. |
+| `scripts` | done (m2) | One `seihai_core::scripting::engine::world::ScriptWorld` per level. `created`, `timeout`, `playerenters`, `playerchats` (from `PM_TO_NPC`, and from a player's chat prop in `PLAYER_PROPS` since milestone 3) and `action*` (from `TRIGGER_ACTION`) run. `playerleaves` runs since `seihai-core` v0.0.6. |
 | `effects` | done (m2) | Maps `Effect` values onto link messages. Anything without a message is logged once. |
 | `mock` | done (m2) | Stand-in gserver for tests and `examples/mock_gserver.rs`. Binds to 127.0.0.1 only. Records `NPC_PROPS` and the other NPC-to-gserver messages. |
 | `main` | done (m1) | Arguments, token, logging, reconnect with backoff, `--once`. |

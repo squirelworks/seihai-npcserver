@@ -36,12 +36,17 @@ seihai-npcserver --gserver 127.0.0.1:14810 --token-file npcserver-token.txt --wo
 The token file holds the same token as `npcserver_token` in the gserver's
 config. The token is never taken on the command line.
 
+## Sample world
+
+`examples/m3-world` is a `seihai-gserver` world whose people only work
+while the NPC-server runs: a greeter, a shop that takes gralats, a gate
+that opens on a server flag and a trainer that gives a weapon by script.
+Its README says how to run it.
+
 ## Try it without a gserver
 
-`seihai-gserver` has the handshake, level list and player side of the link,
-but does not apply the NPC-server's messages (NPC props, player changes,
-warps and the rest) yet. To see those, a stand-in gserver ships as an
-example. It listens on `127.0.0.1` only:
+A stand-in gserver ships as an example, for trying the link without
+`seihai-gserver`. It listens on `127.0.0.1` only:
 
 ```
 export SEIHAI_NPCSERVER_TOKEN=lab-token-0123456789

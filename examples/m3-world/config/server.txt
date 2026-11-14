@@ -1,0 +1,13 @@
+# The milestone 3 sample world. Only the settings that differ from the
+# defaults are here; see seihai-gserver's world/config/server.txt for the
+# rest.
+name = NPC-server sample world
+bind = 127.0.0.1
+port = 14802
+start_level = m3_square.nw
+start_x = 30
+start_y = 32
+# Lab only: an account is made on its first login.
+create_accounts = true
+# seihai-gserver starts seihai-npcserver from next to its own binary.
+npcserver = auto

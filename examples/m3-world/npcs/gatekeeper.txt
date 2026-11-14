@@ -1,0 +1,23 @@
+LEVEL m3_square.nw
+X 45
+Y 22
+IMAGE
+SCRIPT
+// The gatekeeper sets the server flag server.gateopen for 30 seconds.
+// The gate (gate.txt) only reads the flag, so setting it from RC opens
+// the gate too.
+if (created) {
+  showcharacter;
+  setcharprop #n,Gatekeeper;
+  message Say "open" and I open the gate.;
+}
+if (playerchats && strequals(#c,open)) {
+  set server.gateopen;
+  message The gate is open for 30 seconds, #n.;
+  timeout = 30;
+}
+if (timeout) {
+  unset server.gateopen;
+  message Say "open" and I open the gate.;
+}
+SCRIPTEND

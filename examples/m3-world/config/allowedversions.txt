@@ -1,0 +1,2 @@
+# Every client build seihai-core has a profile for.
+*

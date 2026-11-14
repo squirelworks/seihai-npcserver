@@ -100,6 +100,22 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
 - [ ] **A v0.1.1 release.** Notes in `docs/releases/v0.1.1.md`; the tag
       waits on the owner. Then `seihai-gserver` moves off `v0.1.0`.
 
-Milestone 3 is next (`docs/PLAN.md`): a sample world whose NPCs only work
-when the NPC-server is running, lab-tested with real clients once
-`seihai-gserver` applies the NPC-server's messages.
+## Milestone 3
+
+`seihai-gserver` applies the NPC-server's messages since
+squirelworks/seihai-gserver#62.
+
+- [x] **Sample world.** `examples/m3-world`: a greeter, a shop that takes
+      gralats, a gate that opens on a server flag and a trainer that
+      gives a weapon by script (`examples/m3-world/README.md`). Tests:
+      `tests/sample_world.rs`. What it needed here:
+  - Players talk to NPCs by chatting: a chat line (prop 12) in
+    `PLAYER_PROPS` runs `playerchats` on the player's level with `#c`
+    set. The gserver's echo of a chat line this server set
+    (`setplayerprop #c`) is not counted.
+  - The player view carries gralats (prop 3), arrows (4) and bombs (5),
+    so `playerrupees` and the rest read the player's real counts.
+  - A `server.` flag a script sets is seen by every level at once, and a
+    flag with no value reads as 1, so `if (server.gateopen)` works.
+- [ ] **Lab run** on seihai-gserver with real 2.05 rev 2, 2.17.1, 2.22 and
+      2.31 under Wine, and Seihai.

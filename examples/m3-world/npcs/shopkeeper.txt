@@ -1,0 +1,21 @@
+LEVEL m3_square.nw
+X 20
+Y 29
+IMAGE
+SCRIPT
+// The shop: say "buy" and 20 gralats become 10 bombs.
+if (created) {
+  showcharacter;
+  setcharprop #n,Shopkeeper;
+  message Say "buy": 10 bombs for 20 gralats.;
+}
+if (playerchats && strequals(#c,buy)) {
+  if (playerrupees >= 20) {
+    playerrupees = playerrupees - 20;
+    playerbombs = playerbombs + 10;
+    message Thank you, #n! 10 bombs for 20 gralats.;
+  } else {
+    message Sorry #n, that is 20 gralats. You have #v(playerrupees).;
+  }
+}
+SCRIPTEND

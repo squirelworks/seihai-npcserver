@@ -1,0 +1,23 @@
+LEVEL m3_square.nw
+X 41
+Y 20
+IMAGE block.png
+SCRIPT
+// The gate: a block in the doorway to the hall. It is gone while the
+// server flag server.gateopen is set, and back when it is not.
+if (created) {
+  this.open = 0;
+  timeout = 0.5;
+}
+if (timeout) {
+  if (server.gateopen && this.open == 0) {
+    this.open = 1;
+    hide;
+  }
+  if (!server.gateopen && this.open == 1) {
+    this.open = 0;
+    show;
+  }
+  timeout = 0.5;
+}
+SCRIPTEND

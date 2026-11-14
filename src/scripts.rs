@@ -152,9 +152,14 @@ impl Scripts {
         for w in self.levels.values_mut() {
             w.core.server_vars.clear();
             for (name, value) in &self.server_flags {
-                w.core
-                    .server_vars
-                    .insert(name.clone(), Val::Str(value.clone()));
+                // A flag set with no value reads as 1, as the engine's own
+                // flags do; `if (server.gateopen)` is then true.
+                let v = if value.is_empty() {
+                    Val::Num(1.0)
+                } else {
+                    Val::Str(value.clone())
+                };
+                w.core.server_vars.insert(name.clone(), v);
             }
         }
     }
@@ -228,8 +233,27 @@ impl Scripts {
             );
             return produced;
         }
+        self.chats(player_id, player, text)
+    }
+
+    /// `player` said `text` (their chat prop, 12, changed in
+    /// `PLAYER_PROPS`): every NPC on their level gets `playerchats` with
+    /// `#c` set to the text, as the 2001 NPC-server's level NPCs heard
+    /// players talk. A level with no server NPCs is skipped quietly, since
+    /// most chat is not meant for an NPC.
+    pub fn on_chat(&mut self, player_id: u16, player: &Player, text: &str) -> Produced {
+        if player.level.as_slice() == LEVELLESS || !self.levels.contains_key(&player.level) {
+            return Produced::default();
+        }
+        self.chats(player_id, player, text)
+    }
+
+    fn chats(&mut self, player_id: u16, player: &Player, text: &str) -> Produced {
+        let level = player.level.clone();
         {
-            let w = self.levels.get_mut(&level).unwrap();
+            let Some(w) = self.levels.get_mut(&level) else {
+                return Produced::default();
+            };
             w.core.player = view_of(player);
             w.core.level = latin1(&level);
             w.chat(text);
@@ -608,7 +632,31 @@ impl Scripts {
                 self.pending_logs.push((level.to_vec(), line));
             }
         }
+        self.own_server_flags(&produced.messages);
         produced
+    }
+
+    /// A `server.` flag a script set or unset is seen by every level's
+    /// scripts at once, not only after the gserver sends `SERVER_FLAGS`
+    /// back: a gate on another level (or later in this tick) reads it
+    /// straight away. The gserver's next `SERVER_FLAGS` still replaces the
+    /// whole set.
+    fn own_server_flags(&mut self, messages: &[Message]) {
+        let mut changed = false;
+        for m in messages {
+            if let Message::ServerFlag { name, set, value } = m {
+                let name = latin1(name).trim().to_ascii_lowercase();
+                if *set {
+                    self.server_flags.insert(name, latin1(value));
+                } else {
+                    self.server_flags.remove(&name);
+                }
+                changed = true;
+            }
+        }
+        if changed {
+            self.apply_server_flags();
+        }
     }
 }
 
@@ -692,6 +740,15 @@ fn view_of(player: &Player) -> PlayerView {
     }
     if let Some(c) = player.chat() {
         v.chat = c;
+    }
+    if let Some(r) = player.rupees() {
+        v.rupees = r;
+    }
+    if let Some(b) = player.bombs() {
+        v.bombs = b;
+    }
+    if let Some(d) = player.darts() {
+        v.darts = d;
     }
     v
 }
