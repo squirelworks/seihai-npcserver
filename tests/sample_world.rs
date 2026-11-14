@@ -253,7 +253,9 @@ fn the_trainer_gives_the_lamp() {
 
 #[test]
 fn the_lamp_weapon_file_is_there() {
-    let lamp = std::fs::read_to_string(format!("{WORLD}/weapons/Lamp.txt")).unwrap();
+    let lamp = std::fs::read_to_string(format!("{WORLD}/weapons/Lamp.txt"))
+        .unwrap()
+        .replace("\r\n", "\n");
     assert!(lamp.starts_with("GRAWP001\nREALNAME Lamp\n"), "{lamp}");
 }
 
