@@ -100,13 +100,21 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
       level-less NPC's line goes out. Tests:
       `effects::tests::sendtonc_and_sendtorc_are_staff_lines`,
       `scripts::tests::level_less_staff_lines_go_out`, and the loopback
-      `chat_weapons_pm_flags_and_trigger_round_trip`. The gserver still
-      has to show the lines to logged-in NPC Control and Remote Control;
-      until then it logs and skips the two ids.
-- [ ] **Gserver shows `SEND_TO_NC` and `SEND_TO_RC`.** That delivery is
-      `seihai-gserver`'s: every logged-in NPC Control (`sendtonc`) and
-      Remote Control (`sendtorc`). This repo's mock already receives the
-      messages. Not started here.
+      `chat_weapons_pm_flags_and_trigger_round_trip`. The NPC-server
+      produces both. Intended recipient categories are logged-in NPC
+      Control for `sendtonc` and Remote Control for `sendtorc`. Consumer
+      delivery is pending: the gserver logs and skips `0x4D` and `0x4E`.
+      The exact policy (every NPC Control connection versus Remote
+      Control rights, and who is eligible) is unresolved; that decision
+      is still open.
+- [ ] **Gserver delivery of `SEND_TO_NC` and `SEND_TO_RC`.** Consumer
+      delivery is pending. The gserver logs and skips `0x4D` and `0x4E`.
+      Intended recipient categories are logged-in NPC Control for
+      `sendtonc` and Remote Control for `sendtorc`. The exact policy
+      (every NPC Control connection versus Remote Control rights, and
+      who is eligible) is unresolved; that decision is still open. This
+      repo's mock records the messages the NPC-server produces; it does
+      not decide who receives them. Not started on the gserver.
 - [x] **A v0.1.1 release.** Published 2026-11-12; notes in
       `docs/releases/v0.1.1.md`. The Rust gserver now pins this crate's
       later commit `21de1ca` (#34), which uses seihai-core v0.1.0.

@@ -83,7 +83,7 @@ in progress; it runs when the session exits.
    | `StopSound`, `StopMidi` | `STOP_SOUND`, `STOP_MIDI` for the script's level |
    | `SetShape` | `NPC_SHAPE` (kind, width and height in pixels) |
    | `TriggerAction` (a script's own `triggeraction`) | `NPC_TRIGGER_ACTION` for the script's level. The engine itself fires it on the NPCs in that level first (`action<name>`, params split on commas) |
-   | `Command` `sendtonc`, `sendtorc` | `SEND_TO_NC` (`0x4D`) and `SEND_TO_RC` (`0x4E`): the text, with `#n(id)` expanded. Not tied to a level or a player. The gserver shows them to logged-in NPC Control and Remote Control |
+   | `Command` `sendtonc`, `sendtorc` | `SEND_TO_NC` (`0x4D`) and `SEND_TO_RC` (`0x4E`): the text, with `#n(id)` expanded. Not tied to a level or a player. The NPC-server produces both. Intended recipient categories are logged-in NPC Control for `sendtonc` and Remote Control for `sendtorc`. Consumer delivery is pending: the gserver logs and skips `0x4D` and `0x4E`. The exact policy (every NPC Control connection versus Remote Control rights, and who is eligible) is unresolved; that decision is still open |
    | `say`, `sendrpgmessage`, `sendtoserver`, other commands, other player variables (the selected weapon among them), flags that are not `server.` | log once, unsupported. No link message for them. `sendtoserver` and setting the selected weapon stay this way on purpose: the reference server's scripts have neither |
 
 4. **Done.** Before `playerenters` / `playerleaves`, the level's `PlayerView`

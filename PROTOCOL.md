@@ -205,17 +205,18 @@ script engine does that itself), so the gserver should not send it back as
 `TRIGGER_ACTION`. Delivering it to what else listens in that level is the
 gserver's side of the link.
 
-`SEND_TO_NC` is `sendtonc` and `SEND_TO_RC` is `sendtorc`. Each carries that
-command's one text argument. The script engine has already expanded `#a`,
-bare `#n` and the other message codes; this server also expands `#n(id)`
-from the players the gserver has listed, as it does for other text it sends.
-An empty text is still sent. The line is not tied to a level, so a
-level-less NPC sends it too (a Control-NPC's `playerlogin` line is the
-usual case). The gserver shows `SEND_TO_NC` to every logged-in NPC Control
-and `SEND_TO_RC` to every logged-in Remote Control, as a staff console
-line. Remote Control reads a console line as id 74. This program does not
-open those logins. Until the gserver applies these two ids it logs and
-skips them, as for any id it does not know.
+`SEND_TO_NC` (`0x4D`) is `sendtonc` and `SEND_TO_RC` (`0x4E`) is
+`sendtorc`. The NPC-server produces both. Each carries that command's one
+text argument. The script engine has already expanded `#a`, bare `#n` and
+the other message codes; the NPC-server also expands `#n(id)` from the
+players the gserver has listed, as it does for other text it sends. An
+empty text is still sent. The line is not tied to a level, so a level-less
+NPC sends it too (a Control-NPC's `playerlogin` line is the usual case).
+The intended recipient category is logged-in NPC Control for `sendtonc`
+and Remote Control for `sendtorc`. Consumer delivery is pending: the
+gserver logs and skips `0x4D` and `0x4E`. The exact policy (every NPC
+Control connection versus Remote Control rights, and who is eligible) is
+unresolved; that decision is still open.
 
 ### 0x80 to 0x8F: NPC Control
 
@@ -306,4 +307,4 @@ messages; the NPC-server already sends them) turns the link off, and
 | 1 | 2026-11-04 | `NPC_TRIGGER_ACTION` (`0x4C`) specified. No version bump: the id was reserved. This copy only, as above. |
 | 1 | 2026-11-11 | No protocol change. The two copies are the same file again; the "this copy only" notes above no longer hold. `seihai-gserver` reads milestone 1 only and does not yet act on the milestone 2 messages. |
 | 1 | 2026-11-12 | NPC Control messages `0x80` to `0x84` specified and built on both sides (seihai-gserver issue #52). No version bump: the ids were reserved. |
-| 1 | 2026-11-14 | `SEND_TO_NC` (`0x4D`) and `SEND_TO_RC` (`0x4E`) specified. No version bump: the ids were reserved. The gserver still has to show them to logged-in staff. |
+| 1 | 2026-11-14 | `SEND_TO_NC` (`0x4D`) and `SEND_TO_RC` (`0x4E`) specified. No version bump: the ids were reserved. The NPC-server produces them. Intended recipient categories are logged-in NPC Control for `sendtonc` and Remote Control for `sendtorc`. Consumer delivery is pending: the gserver logs and skips `0x4D` and `0x4E`. The exact policy (every NPC Control connection versus Remote Control rights, and who is eligible) is unresolved; that decision is still open. |

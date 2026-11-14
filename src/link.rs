@@ -201,11 +201,19 @@ pub enum Message {
         action: Vec<u8>,
         params: Vec<u8>,
     },
-    /// `sendtonc`: a line for every logged-in NPC Control.
+    /// `sendtonc` (`SEND_TO_NC`, `0x4D`). Produced by the NPC-server.
+    /// Intended recipient category: logged-in NPC Control. Consumer
+    /// delivery is pending: the gserver logs and skips `0x4D`. The exact
+    /// policy (every NPC Control connection versus Remote Control rights,
+    /// and who is eligible) is unresolved; that decision is still open.
     SendToNc {
         text: Vec<u8>,
     },
-    /// `sendtorc`: a line for every logged-in Remote Control.
+    /// `sendtorc` (`SEND_TO_RC`, `0x4E`). Produced by the NPC-server.
+    /// Intended recipient category: Remote Control. Consumer delivery is
+    /// pending: the gserver logs and skips `0x4E`. The exact policy (every
+    /// NPC Control connection versus Remote Control rights, and who is
+    /// eligible) is unresolved; that decision is still open.
     SendToRc {
         text: Vec<u8>,
     },
