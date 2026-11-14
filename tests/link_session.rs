@@ -146,6 +146,108 @@ fn sends_ping_when_idle_and_closes_when_dead() {
 }
 
 #[test]
+fn partial_inbound_frame_does_not_strand_idle_shutdown() {
+    use std::io::Write;
+    use std::sync::mpsc;
+
+    let listener = mock::bind(0).unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    let server = thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        link::read_frame(&mut s).unwrap();
+        link::write_frame(
+            &mut s,
+            &[Message::Welcome {
+                link_version: 1,
+                server_name: b"Partial".to_vec(),
+                program: b"test".to_vec(),
+            }],
+        )
+        .unwrap();
+        // Announce ten body bytes but send only the compression byte and
+        // one payload byte. The reader blocks in read_exact, not on recv.
+        s.write_all(&[0, 10, 0x02, 0x50]).unwrap();
+        let mut pings = 0;
+        loop {
+            match link::read_frame(&mut s) {
+                Ok(batch) => {
+                    pings += batch
+                        .iter()
+                        .filter(|m| matches!(m, Message::Ping { .. }))
+                        .count()
+                }
+                Err(e) => return (pings, e.kind()),
+            }
+        }
+    });
+    let (done, finished) = mpsc::channel();
+    let client = thread::spawn(move || {
+        let timing = Timing {
+            tick: Duration::from_millis(10),
+            handshake: Duration::from_secs(5),
+            ping_after: Duration::from_millis(30),
+            dead_after: Duration::from_millis(150),
+        };
+        let result = session::run(&addr, TOKEN, timing, None, &mut |_| {});
+        done.send(result.0).unwrap();
+    });
+    let end = finished
+        .recv_timeout(Duration::from_secs(5))
+        .expect("session reader did not shut down");
+    client.join().unwrap();
+    let (pings, error) = server.join().unwrap();
+    assert!(
+        matches!(end, End::Closed(ref r) if r.starts_with("nothing from the gserver")),
+        "{end:?}"
+    );
+    assert!(pings > 0, "partial input stopped the keepalive tick");
+    assert_eq!(error, std::io::ErrorKind::UnexpectedEof);
+}
+
+#[test]
+fn burst_of_separate_frames_keeps_pong_order() {
+    let listener = mock::bind(0).unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    let server = thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        link::read_frame(&mut s).unwrap();
+        link::write_frame(
+            &mut s,
+            &[Message::Welcome {
+                link_version: 1,
+                server_name: b"Burst".to_vec(),
+                program: b"test".to_vec(),
+            }],
+        )
+        .unwrap();
+        for nonce in 0..64 {
+            link::write_frame(&mut s, &[Message::Ping { nonce }]).unwrap();
+        }
+        let mut pongs = Vec::new();
+        while pongs.len() < 64 {
+            for m in link::read_frame(&mut s).unwrap() {
+                if let Message::Pong { nonce } = m {
+                    pongs.push(nonce);
+                }
+            }
+        }
+        link::write_frame(
+            &mut s,
+            &[Message::Bye {
+                reason: b"burst done".to_vec(),
+            }],
+        )
+        .unwrap();
+        pongs
+    });
+    let (end, _) = session::run(&addr, TOKEN, fast(), None, &mut |_| {});
+    assert_eq!(end, End::Closed("bye: burst done".into()));
+    assert_eq!(server.join().unwrap(), (0..64).collect::<Vec<_>>());
+}
+
+#[test]
 fn unknown_messages_are_skipped() {
     let mut script = Script::lab(TOKEN);
     script.updates.insert(

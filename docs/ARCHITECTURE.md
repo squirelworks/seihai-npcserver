@@ -42,6 +42,17 @@ Every 0.1 s (the smallest useful `timeout`):
 3. Keep-alive: `PING` after 30 s of not sending, close after 90 s of silence.
 4. Write everything produced this tick as one frame.
 
+The reader has one decoded frame of queued read-ahead. When it fills, the
+reader waits instead of accumulating more frames, so TCP applies backpressure.
+The reader may hold one further frame while sending, and the tick loop handles
+one batch at a time. Each frame is limited to 16 MiB of decoded body by `link`;
+decoded messages also have allocation overhead, so this is not a fixed RSS cap.
+This bounds the inbound handoff, not persistent world state or script effects.
+Every session exit drops the inbox, shuts down the shared socket and joins the
+reader, releasing either a blocked send or an idle/partial-frame read. This
+does not interrupt scripts, file operations, socket writes or decoding already
+in progress; it runs when the session exits.
+
 ## Milestone 2 (done)
 
 1. **Done.** `session::run` takes an optional `Scripts`. On the first
