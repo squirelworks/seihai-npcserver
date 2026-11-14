@@ -1,0 +1,16 @@
+LEVEL m3_hall.nw
+X 31
+Y 41
+IMAGE
+SCRIPT
+// The trainer gives every visitor the Lamp (weapons/Lamp.txt) by script.
+if (created) {
+  showcharacter;
+  setcharprop #n,Trainer;
+  message Welcome to the hall!;
+}
+if (playerenters) {
+  addweapon Lamp;
+  message Here, #n: the Lamp. Select it and fire it.;
+}
+SCRIPTEND

@@ -1,0 +1,23 @@
+LEVEL m3_square.nw
+X 32
+Y 29
+IMAGE
+SCRIPT
+// The greeter: welcomes everyone who walks in, and hands out a purse of
+// gralats to anyone too poor to try the shop.
+if (created) {
+  showcharacter;
+  setcharprop #n,Greeter;
+  message Say "hi" to me!;
+}
+if (playerenters) {
+  message Welcome to the sample world, #n!;
+  if (playerrupees < 20) {
+    playerrupees = playerrupees + 30;
+    message Welcome, #n! Here are 30 gralats for the shop.;
+  }
+}
+if (playerchats && strequals(#c,hi)) {
+  message Hi #n! The shop is west, the gate is east.;
+}
+SCRIPTEND

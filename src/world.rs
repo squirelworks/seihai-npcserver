@@ -54,6 +54,22 @@ impl Player {
         Some(seihai_core::protocol::latin1(raw.get(1..).unwrap_or(&[])))
     }
 
+    /// Gralats from RUPEESCOUNT (3), a GINT3.
+    pub fn rupees(&self) -> Option<f64> {
+        let raw = self.props.get(&3)?;
+        seihai_core::protocol::read_gint3(raw).map(|n| n as f64)
+    }
+
+    /// Bombs from BOMBSCOUNT (5).
+    pub fn bombs(&self) -> Option<f64> {
+        self.gchar(5).map(f64::from)
+    }
+
+    /// Arrows from ARROWSCOUNT (4).
+    pub fn darts(&self) -> Option<f64> {
+        self.gchar(4).map(f64::from)
+    }
+
     fn gchar(&self, id: u8) -> Option<u8> {
         self.props.get(&id)?.first().map(|b| b.wrapping_sub(0x20))
     }
@@ -74,6 +90,11 @@ pub struct World {
     /// The whole `server.` flag set from the latest `SERVER_FLAGS`.
     /// Names are lower case, as scripts read them.
     pub server_flags: BTreeMap<String, String>,
+    /// Chat text this server set on a player with `SET_PLAYER_PROPS`
+    /// (`setplayerprop #c`), by player id. The gserver echoes it back in
+    /// `PLAYER_PROPS`; that echo is not the player chatting, so it does not
+    /// fire `playerchats`.
+    pub sent_chat: BTreeMap<u16, Vec<u8>>,
 }
 
 /// `SERVER_FLAGS` entries are `name=value`. The name is lower-cased. A

@@ -1,0 +1,3 @@
+# The sample world is served to clients as written: keep LF line ends on
+# every platform (a Windows checkout would otherwise turn them into CRLF).
+examples/m3-world/** text eol=lf

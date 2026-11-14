@@ -1,0 +1,8 @@
+GRAWP001
+REALNAME Lamp
+IMAGE bomb1.png
+SCRIPT
+if (weaponfired) {
+  setplayerprop #c,The lamp shines!;
+}
+SCRIPTEND

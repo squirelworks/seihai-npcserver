@@ -51,5 +51,5 @@ configure the link. Running it on another machine is the advanced option.
    `triggeraction` and the other player variables are sent. `PM_TO_NPC`,
    `SERVER_FLAGS` and `TRIGGER_ACTION` run. See `docs/NEXT.md` for what is
    still only logged and what is open.
-3. A sample world whose NPCs only work when the NPC-server runs; lab test with
-   real 2.05 to 2.31 and Seihai.
+3. A sample world whose NPCs only work when the NPC-server runs
+   (`examples/m3-world`); lab test with real 2.05 to 2.31 and Seihai.

@@ -224,6 +224,7 @@ fn session(
         }
         // 4. Send what this tick produced.
         if !out.is_empty() {
+            note_sent_chat(world, &out);
             link::write_frame(&mut stream, &out)?;
             out.clear();
             last_sent = Instant::now();
@@ -286,6 +287,14 @@ fn handle(
                     "player {player_id} props: {}",
                     prop_summary(&props)
                 ));
+                if let Some(text) = said(&props) {
+                    let echo = world.sent_chat.get(&player_id) == Some(&text);
+                    if echo {
+                        world.sent_chat.remove(&player_id);
+                    } else if let Some(player) = world.players.get(&player_id).cloned() {
+                        chat_event(&mut scripts, world, player_id, &player, &text, out, log);
+                    }
+                }
             }
             None => log(format!("props for unknown player {player_id}, ignored")),
         },
@@ -615,6 +624,58 @@ fn player_event(
     log_produced(&produced, log);
     log_script_lines(scripts, log);
     out.extend(produced.messages);
+}
+
+/// The chat text (prop 12) in a `PLAYER_PROPS` stream, when there is one
+/// and it is not empty.
+fn said(stream: &[u8]) -> Option<Vec<u8>> {
+    let text = parse_player_props(stream)
+        .into_iter()
+        .rev()
+        .find(|p| p.id == 12)?
+        .raw
+        .get(1..)?
+        .to_vec();
+    (!text.iter().all(|b| b.is_ascii_whitespace())).then_some(text)
+}
+
+/// `playerchats` for a player who said `text` on their level.
+fn chat_event(
+    scripts: &mut Option<&mut Scripts>,
+    world: &World,
+    player_id: u16,
+    player: &Player,
+    text: &[u8],
+    out: &mut Vec<Message>,
+    log: Log,
+) {
+    let Some(scripts) = scripts.as_mut().filter(|s| s.is_started()) else {
+        return;
+    };
+    scripts.set_nicks(nick_table(world));
+    scripts.set_gear(gear_table(world));
+    let produced = scripts.on_chat(player_id, player, &seihai_core::protocol::latin1(text));
+    log_produced(&produced, log);
+    log_script_lines(scripts, log);
+    out.extend(produced.messages);
+}
+
+/// Remember the chat text each outgoing `SET_PLAYER_PROPS` sets, so its
+/// echo in `PLAYER_PROPS` does not count as the player talking.
+fn note_sent_chat(world: &mut World, out: &[Message]) {
+    for m in out {
+        if let Message::SetPlayerProps { player_id, props } = m {
+            if let Some(p) = parse_player_props(props)
+                .into_iter()
+                .rev()
+                .find(|p| p.id == 12)
+            {
+                world
+                    .sent_chat
+                    .insert(*player_id, p.raw.get(1..).unwrap_or(&[]).to_vec());
+            }
+        }
+    }
 }
 
 fn log_produced(produced: &Produced, log: Log) {
