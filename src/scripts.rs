@@ -473,9 +473,9 @@ impl Scripts {
         Ok(self.restart_level(&level))
     }
 
-    /// NPC Control: take an NPC out (`NC_NPC_DELETE`). Its file is renamed
-    /// to `.txt.deleted`, which the database does not read, so it can be
-    /// put back by hand.
+    /// NPC Control: take an NPC out (`NC_NPC_DELETE`). Its file is kept as
+    /// `.txt.deleted`, which the database does not read, so it can be put
+    /// back by hand. An existing recovery file is never replaced.
     pub fn nc_delete(&mut self, npc_id: u32) -> Result<Produced, String> {
         let i = self
             .npcs
@@ -484,7 +484,18 @@ impl Scripts {
             .ok_or_else(|| format!("no NPC {npc_id}"))?;
         if let Some(path) = &self.npcs[i].path {
             let gone = path.with_extension("txt.deleted");
-            std::fs::rename(path, &gone).map_err(|e| format!("{}: {e}", path.display()))?;
+            // A rename may replace an earlier recovery. A hard link creates
+            // the recovery name without replacement, including when another
+            // request creates it concurrently. Only then remove the live name.
+            std::fs::hard_link(path, &gone)
+                .map_err(|e| format!("{}: recovery {}: {e}", path.display(), gone.display()))?;
+            std::fs::remove_file(path).map_err(|e| {
+                format!(
+                    "{}: could not remove original; recovery kept at {}: {e}",
+                    path.display(),
+                    gone.display()
+                )
+            })?;
         }
         let n = self.npcs.remove(i);
         self.npc_count = self.npc_count.saturating_sub(1);
@@ -1139,6 +1150,88 @@ mod tests {
         assert!(!text(s.nc_get(10, 1, 0)).0);
         assert_eq!(s.levels().count(), 0);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn npc_control_delete_preserves_an_existing_recovery_file() {
+        let (dir, mut s) = delete_world("recovery-file");
+        let path = dir.join("npcs/bell.txt");
+        let before = std::fs::read(&path).unwrap();
+        let gone = path.with_extension("txt.deleted");
+        std::fs::write(&gone, b"earlier recovery").unwrap();
+        let list = s.nc_list();
+        let script = s.nc_get(1, 1, crate::link::nc_get::SCRIPT);
+
+        assert!(s.nc_delete(1).is_err());
+        assert_eq!(std::fs::read(&gone).unwrap(), b"earlier recovery");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(s.nc_list(), list);
+        assert_eq!(s.nc_get(1, 1, crate::link::nc_get::SCRIPT), script);
+        assert_eq!(s.npc_count, 1);
+        assert_eq!(s.levels().count(), 1);
+
+        // Removing the collision lets the same request succeed without a reload.
+        std::fs::remove_file(&gone).unwrap();
+        let deleted = s.nc_delete(1).unwrap();
+        assert_eq!(std::fs::read(&gone).unwrap(), before);
+        assert!(!path.exists());
+        assert_eq!(
+            deleted.messages.last(),
+            Some(&Message::NcNpcDelete { npc_id: 1 })
+        );
+        assert!(s.nc_list().is_empty());
+        assert_eq!(s.npc_count, 0);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn npc_control_delete_storage_errors_keep_the_npc() {
+        for missing_source in [false, true] {
+            let (dir, mut s) = delete_world(if missing_source {
+                "missing-source"
+            } else {
+                "recovery-dir"
+            });
+            let path = dir.join("npcs/bell.txt");
+            let before = std::fs::read(&path).unwrap();
+            let gone = path.with_extension("txt.deleted");
+            if missing_source {
+                std::fs::remove_file(&path).unwrap();
+            } else {
+                std::fs::create_dir(&gone).unwrap();
+            }
+            let list = s.nc_list();
+            let script = s.nc_get(1, 1, crate::link::nc_get::SCRIPT);
+            assert!(s.nc_delete(1).is_err());
+            assert_eq!(s.nc_list(), list);
+            assert_eq!(s.nc_get(1, 1, crate::link::nc_get::SCRIPT), script);
+            assert_eq!(s.npc_count, 1);
+            assert_eq!(s.levels().count(), 1);
+            if missing_source {
+                assert!(!gone.exists());
+            } else {
+                assert!(gone.is_dir());
+                assert_eq!(std::fs::read(&path).unwrap(), before);
+            }
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
+    fn delete_world(tag: &str) -> (PathBuf, Scripts) {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "seihai-nc-delete-{tag}-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(dir.join("npcs")).unwrap();
+        std::fs::write(dir.join("npcs/bell.txt"), "LEVEL start.nw\nX 5\nY 6\nIMAGE bell.png\nSCRIPT\nif (created) { message ding; }\nSCRIPTEND\n").unwrap();
+        let mut s = Scripts::with_world(Era::V217, &dir);
+        s.open_database().unwrap();
+        s.start();
+        (dir, s)
     }
 
     #[test]
