@@ -49,6 +49,62 @@ pub enum End {
 /// A log sink. `main` prints lines with a time stamp; tests collect them.
 pub type Log<'a> = &'a mut dyn FnMut(String);
 
+type FrameBatch = io::Result<Vec<Message>>;
+
+/// One decoded frame may wait for the tick loop. The reader can also hold
+/// one frame while sending, and the consumer handles one at a time. Each
+/// frame has link::MAX_FRAME bytes of body, plus decoded-message overhead;
+/// this is a frame-count bound, not a fixed process-memory limit.
+const READ_AHEAD_FRAMES: usize = 1;
+
+/// Own the inbox and reader together so every session exit, including a
+/// failed write, releases both a blocked send and a blocked socket read.
+struct FrameReader<Stop: FnOnce()> {
+    inbox: Option<mpsc::Receiver<FrameBatch>>,
+    stop: Option<Stop>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl<Stop: FnOnce()> FrameReader<Stop> {
+    fn start<R: io::Read + Send + 'static>(mut input: R, stop: Stop) -> io::Result<Self> {
+        let (tx, rx) = mpsc::sync_channel(READ_AHEAD_FRAMES);
+        let worker = std::thread::Builder::new()
+            .name("npc-link-reader".into())
+            .spawn(move || loop {
+                let batch = link::read_frame(&mut input);
+                let failed = batch.is_err();
+                if tx.send(batch).is_err() || failed {
+                    return;
+                }
+            })?;
+        Ok(Self {
+            inbox: Some(rx),
+            stop: Some(stop),
+            worker: Some(worker),
+        })
+    }
+
+    fn recv_timeout(&self, timeout: Duration) -> Result<FrameBatch, RecvTimeoutError> {
+        self.inbox
+            .as_ref()
+            .expect("reader is alive")
+            .recv_timeout(timeout)
+    }
+}
+
+impl<Stop: FnOnce()> Drop for FrameReader<Stop> {
+    fn drop(&mut self) {
+        // Drop before joining: the worker may be waiting for inbox space.
+        drop(self.inbox.take());
+        if let Some(stop) = self.stop.take() {
+            stop();
+        }
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
 /// Connect to `addr`, authenticate with `token`, then run until the link
 /// closes. Returns how it ended and the last known world.
 ///
@@ -140,16 +196,12 @@ fn session(
     }
     stream.set_read_timeout(None)?;
 
-    // A reader thread hands frames to the tick loop.
-    let (tx, rx) = mpsc::channel::<io::Result<Vec<Message>>>();
-    let mut reader = stream.try_clone()?;
-    std::thread::spawn(move || loop {
-        let r = link::read_frame(&mut reader);
-        let failed = r.is_err();
-        if tx.send(r).is_err() || failed {
-            return;
-        }
-    });
+    // Keep one frame of read-ahead, then let TCP apply backpressure.
+    let input = stream.try_clone()?;
+    let shutdown = stream.try_clone()?;
+    let reader = FrameReader::start(input, move || {
+        let _ = shutdown.shutdown(Shutdown::Both);
+    })?;
 
     let rest: Vec<Message> = msgs.collect();
     let mut seen_unknown = [false; 256];
@@ -165,16 +217,18 @@ fn session(
         loop {
             let batch = match pending.take() {
                 Some(b) => Ok(b),
-                None => match rx.recv_timeout(tick_end.saturating_duration_since(Instant::now())) {
-                    Ok(r) => {
-                        last_recv = Instant::now();
-                        r
+                None => {
+                    match reader.recv_timeout(tick_end.saturating_duration_since(Instant::now())) {
+                        Ok(r) => {
+                            last_recv = Instant::now();
+                            r
+                        }
+                        Err(RecvTimeoutError::Timeout) => break,
+                        Err(RecvTimeoutError::Disconnected) => {
+                            return Ok(End::Closed("reader stopped".into()))
+                        }
                     }
-                    Err(RecvTimeoutError::Timeout) => break,
-                    Err(RecvTimeoutError::Disconnected) => {
-                        return Ok(End::Closed("reader stopped".into()))
-                    }
-                },
+                }
             };
             let batch = match batch {
                 Ok(b) => b,
@@ -766,6 +820,156 @@ fn prop_summary(stream: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Cursor, Read};
+
+    const WAIT: Duration = Duration::from_secs(3);
+
+    /// Observe completed frame reads, not just successful inbox receives.
+    /// This detects a producer reading ahead while its consumer is stalled.
+    struct ObservedInput {
+        bytes: Cursor<Vec<u8>>,
+        ends: Vec<u64>,
+        next: usize,
+        completed: mpsc::Sender<usize>,
+    }
+
+    impl Read for ObservedInput {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            let n = self.bytes.read(buf)?;
+            while self.next < self.ends.len() && self.bytes.position() >= self.ends[self.next] {
+                let _ = self.completed.send(self.next);
+                self.next += 1;
+            }
+            Ok(n)
+        }
+    }
+
+    fn observed_input(count: usize) -> (ObservedInput, mpsc::Receiver<usize>) {
+        let mut bytes = Vec::new();
+        let mut ends = Vec::new();
+        for nonce in 0..count as u32 {
+            bytes.extend(link::encode_frame(&[Message::Ping { nonce }]).unwrap());
+            ends.push(bytes.len() as u64);
+        }
+        let (completed, rx) = mpsc::channel();
+        (
+            ObservedInput {
+                bytes: Cursor::new(bytes),
+                ends,
+                next: 0,
+                completed,
+            },
+            rx,
+        )
+    }
+
+    #[test]
+    fn reader_backpressures_a_stalled_consumer_and_keeps_frame_order() {
+        let (input, completed) = observed_input(3);
+        let reader = FrameReader::start(input, || {}).unwrap();
+        // One queued frame plus one decoded frame waiting to send. A third
+        // frame must not even be read until the consumer makes room.
+        assert_eq!(completed.recv_timeout(WAIT).unwrap(), 0);
+        assert_eq!(completed.recv_timeout(WAIT).unwrap(), 1);
+        assert_eq!(
+            completed.recv_timeout(Duration::from_millis(100)),
+            Err(RecvTimeoutError::Timeout)
+        );
+        for nonce in 0..3 {
+            assert_eq!(
+                reader.recv_timeout(WAIT).unwrap().unwrap(),
+                vec![Message::Ping { nonce }]
+            );
+        }
+        assert_eq!(completed.recv_timeout(WAIT).unwrap(), 2);
+        assert_eq!(
+            reader.recv_timeout(WAIT).unwrap().unwrap_err().kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+        assert!(matches!(
+            reader.recv_timeout(WAIT),
+            Err(RecvTimeoutError::Disconnected)
+        ));
+    }
+
+    #[test]
+    fn dropping_a_full_reader_releases_the_sender_and_joins() {
+        let (input, completed) = observed_input(2);
+        let reader = FrameReader::start(input, || {}).unwrap();
+        assert_eq!(completed.recv_timeout(WAIT).unwrap(), 0);
+        assert_eq!(completed.recv_timeout(WAIT).unwrap(), 1);
+        let (done, stopped) = mpsc::channel();
+        let dropper = std::thread::spawn(move || {
+            drop(reader);
+            done.send(()).unwrap();
+        });
+        stopped
+            .recv_timeout(WAIT)
+            .expect("full inbox stranded the reader");
+        dropper.join().unwrap();
+    }
+
+    #[test]
+    fn dropping_an_idle_reader_cancels_the_read_and_joins() {
+        struct IdleInput {
+            started: mpsc::Sender<()>,
+            cancel: mpsc::Receiver<()>,
+            dropped: mpsc::Sender<()>,
+        }
+        impl Read for IdleInput {
+            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+                self.started.send(()).unwrap();
+                self.cancel.recv().unwrap();
+                Ok(0)
+            }
+        }
+        impl Drop for IdleInput {
+            fn drop(&mut self) {
+                let _ = self.dropped.send(());
+            }
+        }
+        let (started, waiting) = mpsc::channel();
+        let (cancel, cancelled) = mpsc::channel();
+        let (dropped, gone) = mpsc::channel();
+        let reader = FrameReader::start(
+            IdleInput {
+                started,
+                cancel: cancelled,
+                dropped,
+            },
+            move || {
+                cancel.send(()).unwrap();
+            },
+        )
+        .unwrap();
+        waiting.recv_timeout(WAIT).unwrap();
+        let (done, stopped) = mpsc::channel();
+        let dropper = std::thread::spawn(move || {
+            drop(reader);
+            // The worker must have dropped its input before guard drop returns.
+            gone.try_recv().expect("reader was not joined");
+            done.send(()).unwrap();
+        });
+        stopped
+            .recv_timeout(WAIT)
+            .expect("idle read was not cancelled");
+        dropper.join().unwrap();
+    }
+
+    #[test]
+    fn reader_forwards_one_decode_error_then_stops() {
+        let mut bytes = vec![0, 1, 0x78]; // Invalid compression byte.
+        bytes.extend(link::encode_frame(&[Message::Ping { nonce: 7 }]).unwrap());
+        let reader = FrameReader::start(Cursor::new(bytes), || {}).unwrap();
+        assert_eq!(
+            reader.recv_timeout(WAIT).unwrap().unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        assert!(matches!(
+            reader.recv_timeout(WAIT),
+            Err(RecvTimeoutError::Disconnected)
+        ));
+    }
 
     #[test]
     fn gear_image_needs_the_image_form() {
