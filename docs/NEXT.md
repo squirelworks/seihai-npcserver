@@ -130,6 +130,17 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
       was run, and macOS was not run. That records the pin, not a new
       client result. The `21de1ca` (#34) line above still used `v0.1.0`.
 
+- [x] **seihai-core pin `v0.4.0`.** The manifest and lockfile select the
+      published tag at `eb7434ac1fbddc35d127ab4bbe8717e8bf1d64e7`,
+      replacing `v0.2.16`; `default-features` remains off. This repository
+      has one manifest and lockfile and no exhaustive `Era` match to extend.
+      The server still explicitly selects `Era::V217`. Core's new `V140`
+      vocabulary registration does not establish native behavior or argument
+      semantics for that version, or select a new NPC-server era. No Rust
+      source or staff-delivery contract changes accompany this pin.
+      Validation is the exact-head Linux/Windows consumer CI attached to
+      this change; no original-client or macOS run is claimed.
+
 The remaining NPC Control editor and server-side GS2 work is tracked in
 roadmap #22. The level-NPC editor in servertools does not edit database NPCs;
 the GS1-to-GS2 compiler issue (squirelworks/seihai-core#6) explicitly excludes
