@@ -101,21 +101,23 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
       `effects::tests::sendtonc_and_sendtorc_are_staff_lines`,
       `scripts::tests::level_less_staff_lines_go_out`, and the loopback
       `chat_weapons_pm_flags_and_trigger_round_trip`. The NPC-server
-      produces both. Intended recipients are every logged-in NPC
-      Control session for `SEND_TO_NC` and every logged-in Remote
-      Control session for `SEND_TO_RC`, each as `PLO_RC_CHAT` (74). A
-      player receives neither. An empty text is still delivered. This
-      is not a historical rights check. A finer NC-versus-RC-rights
-      rule is still unresolved.
+      produces both. The gserver change is seihai-gserver #139 and is
+      not on this repo's main until that PR merges. The intended
+      recipients are every logged-in NPC Control session for
+      `SEND_TO_NC` and every logged-in Remote Control session for
+      `SEND_TO_RC`, each as `PLO_RC_CHAT` (74), including an empty
+      text. A player is not a recipient. This is not a historical
+      rights check. A finer NC-versus-RC-rights rule is still
+      unresolved.
 - [ ] **Gserver delivery of `SEND_TO_NC` and `SEND_TO_RC`.** The gserver
-      change is seihai-gserver #139 and is not on npcserver main until
-      that PR merges. Intended recipients are every logged-in NPC
-      Control session for `SEND_TO_NC` and every logged-in Remote
-      Control session for `SEND_TO_RC`, each as `PLO_RC_CHAT` (74). A
-      player receives neither. An empty text is still delivered. This
-      is not a historical rights check. A finer NC-versus-RC-rights
-      rule is still unresolved. This repo produces the lines. Its mock
-      records them.
+      change is seihai-gserver #139 and is not on this repo's main
+      until that PR merges. The intended recipients are every logged-in
+      NPC Control session for `SEND_TO_NC` and every logged-in Remote
+      Control session for `SEND_TO_RC`, each as `PLO_RC_CHAT` (74),
+      including an empty text. A player is not a recipient. This is not
+      a historical rights check. A finer NC-versus-RC-rights rule is
+      still unresolved. This repo produces the lines. Its mock records
+      them.
 - [x] **A v0.1.1 release.** Published 2026-11-12; notes in
       `docs/releases/v0.1.1.md`. The Rust gserver now pins this crate's
       later commit `21de1ca` (#34), which uses seihai-core v0.1.0.
