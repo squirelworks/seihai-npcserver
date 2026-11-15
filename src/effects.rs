@@ -413,14 +413,17 @@ impl Outbound {
         })
     }
 
-    /// `showcharacter` reports image `#c#` and the idle gani. Other commands
-    /// stay logged once: this link has no message for them.
+    /// `showcharacter` reports image `#c#` and the idle gani.
+    /// `sendtonc` and `sendtorc` are staff lines. Other commands stay
+    /// logged once: this link has no message for them.
     fn command(&mut self, ctx: &Ctx, name: &str, args: &[Val]) -> Mapped {
         match name {
             "toweapons" | "addweapon" => {
                 let weapon = args.first().map(Val::text).unwrap_or_default();
                 self.grant_weapon(ctx, &weapon)
             }
+            "sendtonc" => self.staff_line(args, true),
+            "sendtorc" => self.staff_line(args, false),
             "showcharacter" => self.npc_props(
                 ctx,
                 vec![
@@ -433,6 +436,19 @@ impl Outbound {
                 &format!("command {other}"),
                 &format!("command {other} has no link message, unsupported"),
             ),
+        }
+    }
+
+    /// `sendtonc` (`nc`) and `sendtorc`. The engine has already expanded
+    /// `#a` and bare `#n`. `#n(id)` is expanded here, as for other text
+    /// this server sends. The line is not tied to a player or a level.
+    fn staff_line(&mut self, args: &[Val], nc: bool) -> Mapped {
+        let text = args.first().map(Val::text).unwrap_or_default();
+        let text = latin1_bytes(&self.expand(&text));
+        if nc {
+            Mapped::one(Message::SendToNc { text })
+        } else {
+            Mapped::one(Message::SendToRc { text })
         }
     }
 
@@ -1185,6 +1201,50 @@ mod tests {
                 weapon: b"Sword".to_vec(),
             }]
         );
+    }
+
+    #[test]
+    fn sendtonc_and_sendtorc_are_staff_lines() {
+        let mut out = Outbound::default();
+        out.set_nicks(BTreeMap::from([(2, "ada".into())]));
+        let rc = out.map(
+            &Effect::Command {
+                obj: 0,
+                name: "sendtorc".into(),
+                args: vec![Val::from("acct #n(2) #n(9)")],
+            },
+            &ctx_npc(1),
+        );
+        assert_eq!(
+            rc.messages,
+            vec![Message::SendToRc {
+                text: b"acct ada #n(9)".to_vec(),
+            }]
+        );
+        let nc = out.map(
+            &Effect::Command {
+                obj: 0,
+                name: "sendtonc".into(),
+                args: vec![Val::from("shop")],
+            },
+            &ctx_npc(1),
+        );
+        assert_eq!(
+            nc.messages,
+            vec![Message::SendToNc {
+                text: b"shop".to_vec(),
+            }]
+        );
+        // No argument is an empty line, and it is still sent.
+        let empty = out.map(
+            &Effect::Command {
+                obj: 0,
+                name: "sendtonc".into(),
+                args: vec![],
+            },
+            &ctx_npc(1),
+        );
+        assert_eq!(empty.messages, vec![Message::SendToNc { text: Vec::new() }]);
     }
 
     #[test]

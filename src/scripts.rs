@@ -352,7 +352,8 @@ impl Scripts {
 
     /// A level-less NPC has no level and no players watching it: its own
     /// prop changes, sounds and trigger actions have nowhere to go. Player
-    /// changes, warps, weapons, PMs and flags still go out.
+    /// changes, warps, weapons, PMs, flags and staff lines (`sendtonc`,
+    /// `sendtorc`) still go out.
     fn drop_level_bound(&mut self, produced: &mut Produced) {
         let before = produced.messages.len();
         produced.messages.retain(|m| {
@@ -1300,6 +1301,62 @@ mod tests {
             vec!["server.out_acct"],
             "{:?}",
             logout.messages
+        );
+    }
+
+    /// A level-less Control-NPC's `sendtorc` / `sendtonc` are staff lines,
+    /// not level props, so they go out. Its own `message` still does not.
+    #[test]
+    fn level_less_staff_lines_go_out() {
+        let mut s = Scripts::new(Era::V217);
+        s.load(&[NpcDef {
+            level: Vec::new(),
+            ..npc("if (created) { sendtonc started; message hi; }\n\
+                 if (playerlogin) { sendtorc #a has logged in!; }")
+        }]);
+        let started = s.start();
+        assert!(
+            started.messages.iter().any(|m| matches!(
+                m,
+                Message::SendToNc { text } if text == b"started"
+            )),
+            "{:?}",
+            started.messages
+        );
+        assert!(
+            started
+                .messages
+                .iter()
+                .all(|m| matches!(m, Message::SendToNc { .. })),
+            "the message prop is dropped: {:?}",
+            started.messages
+        );
+        assert!(
+            started.notes.iter().any(|n| n.contains("level-less")),
+            "{:?}",
+            started.notes
+        );
+        let player = Player {
+            account: b"acct".to_vec(),
+            level: b"onlinestartlocal.nw".to_vec(),
+            ..Player::default()
+        };
+        let login = s.on_login(2, &player, "playerlogin");
+        assert!(
+            login.messages.iter().any(|m| matches!(
+                m,
+                Message::SendToRc { text } if text == b"acct has logged in!"
+            )),
+            "{:?}",
+            login.messages
+        );
+        assert!(
+            !login
+                .notes
+                .iter()
+                .any(|n| n.contains("sendtorc") || n.contains("sendtonc")),
+            "{:?}",
+            login.notes
         );
     }
 

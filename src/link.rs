@@ -54,6 +54,8 @@ pub mod id {
     pub const STOP_MIDI: u8 = 0x4A;
     pub const NPC_SHAPE: u8 = 0x4B;
     pub const NPC_TRIGGER_ACTION: u8 = 0x4C;
+    pub const SEND_TO_NC: u8 = 0x4D;
+    pub const SEND_TO_RC: u8 = 0x4E;
     pub const NC_NPC: u8 = 0x80;
     pub const NC_GET: u8 = 0x81;
     pub const NC_TEXT: u8 = 0x82;
@@ -199,6 +201,22 @@ pub enum Message {
         action: Vec<u8>,
         params: Vec<u8>,
     },
+    /// `sendtonc` (`SEND_TO_NC`, `0x4D`). Produced by the NPC-server.
+    /// Intended recipient category: logged-in NPC Control. Consumer
+    /// delivery is pending: the gserver logs and skips `0x4D`. The exact
+    /// policy (every NPC Control connection versus Remote Control rights,
+    /// and who is eligible) is unresolved; that decision is still open.
+    SendToNc {
+        text: Vec<u8>,
+    },
+    /// `sendtorc` (`SEND_TO_RC`, `0x4E`). Produced by the NPC-server.
+    /// Intended recipient category: Remote Control. Consumer delivery is
+    /// pending: the gserver logs and skips `0x4E`. The exact policy (every
+    /// NPC Control connection versus Remote Control rights, and who is
+    /// eligible) is unresolved; that decision is still open.
+    SendToRc {
+        text: Vec<u8>,
+    },
     /// NPC Control: one database NPC, for the NC's NPC list (NPC → GS).
     NcNpc {
         npc_id: u32,
@@ -269,6 +287,8 @@ impl Message {
             Message::StopMidi { .. } => id::STOP_MIDI,
             Message::NpcShape { .. } => id::NPC_SHAPE,
             Message::NpcTriggerAction { .. } => id::NPC_TRIGGER_ACTION,
+            Message::SendToNc { .. } => id::SEND_TO_NC,
+            Message::SendToRc { .. } => id::SEND_TO_RC,
             Message::NcNpc { .. } => id::NC_NPC,
             Message::NcGet { .. } => id::NC_GET,
             Message::NcText { .. } => id::NC_TEXT,
@@ -433,6 +453,7 @@ impl Message {
                 put_str(&mut d, action)?;
                 put_str(&mut d, params)?;
             }
+            Message::SendToNc { text } | Message::SendToRc { text } => put_str(&mut d, text)?,
             Message::NcNpc {
                 npc_id,
                 name,
@@ -597,6 +618,8 @@ impl Message {
                 action: r.str()?,
                 params: r.str()?,
             },
+            id::SEND_TO_NC => Message::SendToNc { text: r.str()? },
+            id::SEND_TO_RC => Message::SendToRc { text: r.str()? },
             id::NC_NPC => Message::NcNpc {
                 npc_id: r.u32()?,
                 name: r.str()?,
@@ -922,6 +945,12 @@ mod tests {
                 y: 41,
                 action: b"open".to_vec(),
                 params: b"red,door".to_vec(),
+            },
+            Message::SendToNc {
+                text: b"shop open".to_vec(),
+            },
+            Message::SendToRc {
+                text: b"acct has logged in".to_vec(),
             },
             Message::NcNpc {
                 npc_id: 3,
