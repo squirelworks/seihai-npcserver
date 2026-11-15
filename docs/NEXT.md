@@ -101,20 +101,19 @@ One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
       `effects::tests::sendtonc_and_sendtorc_are_staff_lines`,
       `scripts::tests::level_less_staff_lines_go_out`, and the loopback
       `chat_weapons_pm_flags_and_trigger_round_trip`. The NPC-server
-      produces both. Intended recipient categories are logged-in NPC
-      Control for `sendtonc` and Remote Control for `sendtorc`. Consumer
-      delivery is pending: the gserver logs and skips `0x4D` and `0x4E`.
-      The exact policy (every NPC Control connection versus Remote
-      Control rights, and who is eligible) is unresolved; that decision
-      is still open.
-- [ ] **Gserver delivery of `SEND_TO_NC` and `SEND_TO_RC`.** Consumer
-      delivery is pending. The gserver logs and skips `0x4D` and `0x4E`.
-      Intended recipient categories are logged-in NPC Control for
-      `sendtonc` and Remote Control for `sendtorc`. The exact policy
-      (every NPC Control connection versus Remote Control rights, and
-      who is eligible) is unresolved; that decision is still open. This
-      repo's mock records the messages the NPC-server produces; it does
-      not decide who receives them. Not started on the gserver.
+      produces both. The gserver delivers `SEND_TO_NC` to every
+      logged-in NPC Control session and `SEND_TO_RC` to every logged-in
+      Remote Control session, each as `PLO_RC_CHAT` (74). A player
+      session receives neither. An empty text is still delivered. This
+      is not a historical rights check: a finer NC-versus-RC-rights
+      rule is still unresolved.
+- [x] **Gserver delivery of `SEND_TO_NC` and `SEND_TO_RC`.** The gserver
+      delivers `SEND_TO_NC` to every logged-in NPC Control session and
+      `SEND_TO_RC` to every logged-in Remote Control session, each as
+      `PLO_RC_CHAT` (74). A player session receives neither. An empty
+      text is still delivered. This is not a historical rights check: a
+      finer NC-versus-RC-rights rule is still unresolved. This repo
+      produces the lines. Its mock records them.
 - [x] **A v0.1.1 release.** Published 2026-11-12; notes in
       `docs/releases/v0.1.1.md`. The Rust gserver now pins this crate's
       later commit `21de1ca` (#34), which uses seihai-core v0.1.0.
