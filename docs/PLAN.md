@@ -49,9 +49,15 @@ configure the link. Running it on another machine is the advanced option.
    `server.` flags, `say2` (`PM`), `toweapons` / `addweapon`
    (`ADD_WEAPON`), `showcharacter`, sounds, `setshape`, a script's own
    `triggeraction` and the other player variables are sent. `PM_TO_NPC`,
-   `SERVER_FLAGS` and `TRIGGER_ACTION` run. See `docs/NEXT.md` for what is
-   still only logged and what is open.
+   `SERVER_FLAGS` and `TRIGGER_ACTION` run. `sendtoserver` and setting
+   the selected weapon stay logged and skipped on purpose.
 3. **Done.** A sample world whose NPCs only work when the NPC-server runs
    (`examples/m3-world`, #35); recorded lab test with real 2.05 rev 2,
    2.17.1, 2.22, 2.31 and Seihai (#36,
    `docs/lab/2026-11-14-m3-sample-world.md`).
+4. **Open (roadmap #22).** NPC Control completeness beyond `#31`
+   (attributes write/reset/add, class/weapon CRUD); the servertools
+   database-NPC editor (seihai-servertools#50); server-side GS2 host
+   integration (seihai-core#6 does not cover it); a finer NC-versus-RC
+   rights rule for `SEND_TO_NC` / `SEND_TO_RC`; and a real-client check
+   of those staff lines. Working checkbox list: `docs/NEXT.md`.
