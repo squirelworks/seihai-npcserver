@@ -1,168 +1,70 @@
-# Next steps
+# Roadmap status (issue #22)
 
-One branch and pull request each. Rules: `AGENTS.md`. Milestone 2 is done
-(the list below, kept as a record); what is still open is under **Open**.
+Working mirror of [issue #22](https://github.com/squirelworks/seihai-npcserver/issues/22)
+against `main` at `f090491` (after #45, seihai-core `v0.4.0`). Tick boxes
+when the matching PR merges. Rules: `AGENTS.md`.
 
-## Milestone 2 (done)
+## Where it stands
 
-- [x] **Wire scripts into the session.** `session::run` takes an optional
-      `Scripts`. On the first `LEVEL_LIST` it reads `<world>/npcs`, calls
-      `Scripts::start`, then `Scripts::tick` each tick, and logs script
-      lines.
+- **Milestones 1–3 are done.** The NPC-server logs into seihai-gserver over
+  the link in `PROTOCOL.md`, loads `<world>/npcs`, runs the server-side GS1
+  events and sends changes back. A mock gserver covers the link. `v0.1.0` /
+  `v0.1.1` are released.
+- **Milestone 3 lab:** sample world `#35` (`examples/m3-world`) and the
+  2026-11-14 real-client run (`#36`,
+  `docs/lab/2026-11-14-m3-sample-world.md`) passed on 2.05 rev 2, 2.17.1,
+  2.22, 2.31 and Seihai. Seihai still draws no `setcharprop #n` names on
+  NPCs and a helmet head where real clients draw the default head (client
+  note for the seihai repo, not an NPC-server defect).
+- **`sendtonc` / `sendtorc`:** produced here as `0x4D` / `0x4E` (`#42`);
+  gserver delivers them as `PLO_RC_CHAT` to logged-in NC/RC sessions
+  (squirelworks/seihai-gserver#139); protocol note `#44`. A finer
+  NC-versus-RC rights rule is still open, and no real client has been run
+  for those lines.
+- **Follow-through done:** NPC recovery filenames `#37`/`#39`; inbound
+  link backpressure `#38`/`#41`; core pin `v0.4.0` (`#45`).
 
-- [x] **Link messages NPC to gserver.** The milestone 2 messages are in
-      `PROTOCOL.md` (no longer a draft). Link version 1 stays. Encode and
-      decode live in `link`, with round-trip tests. `seihai-gserver` now
-      carries the same `PROTOCOL.md` and depends on this crate's `link`
-      at tag `v0.1.0`.
+## Open checkboxes
 
-- [x] **Effects to link messages.** `src/effects.rs` maps `Effect` values
-      onto those messages (`docs/ARCHITECTURE.md`, the effects table).
-      Anything without a message is logged once and skipped.
+### Code / product (non-lab)
 
-- [x] **Player view.** Before `playerenters` / `playerleaves`, the level's
-      `PlayerView` is filled from `world::Player` (nick, account, position,
-      direction, hearts, chat). Bare `#n` is that player's nickname;
-      `seihai-core` expands it from `PlayerView.nick`. `#n(id)` came in
-      the next items: this server expands it from `World.players`.
+- [ ] **NPC Control completeness:** `#31` already provides the NPC list,
+      attributes read, script read/write and delete over link ids
+      `0x80`–`0x84` (gserver has a matching NC integration test). Still
+      open: attributes write/reset/add and class/weapon CRUD.
+- [ ] **servertools database-NPC editor:** the LAT level-NPC editor does
+      not edit database NPCs (seihai-servertools#50).
+- [ ] **Server-side GS2:** define and implement the NPC-server
+      host/event/effect integration and acceptance scope. The clean-room
+      compiler and GS1 lowering (squirelworks/seihai-core#6) are related
+      foundations; that issue explicitly excludes server-side GS2, so
+      compiler progress alone does not close this item.
+- [ ] **Finer NC-versus-RC rights** on `SEND_TO_NC` / `SEND_TO_RC`
+      (today every logged-in session of that kind gets the line).
 
-- [x] **Mock gserver learns the new messages.** Loopback test: an NPC with
-      `if (created) { timeout = 0.1; } if (timeout) { setcharprop #c,hi; timeout = 1; }`
-      makes `NPC_PROPS` arrive at the mock.
+### Lab
 
-- [x] **Chat, weapons, PMs, flags, triggers.** `say2` is `PM`. `toweapons`
-      and `addweapon` are `ADD_WEAPON`. `showcharacter` is the character
-      NPC props. `PM_TO_NPC` runs as `playerchats` on the sender's level,
-      `SERVER_FLAGS` replaces the flag set, and `TRIGGER_ACTION` fires
-      `action<name>`. `#n(id)` expands from `World.players` when that id
-      is online. The commands this left logged-only were given link
-      messages in the items below, apart from `say`, `sendrpgmessage`,
-      `sendtoserver`, the selected weapon and unknown commands, which are
-      still logged once and skipped.
+- [ ] Real-client confirmation of `sendtonc` / `sendtorc` delivery to NC
+      and RC (loopback only).
 
-- [x] **Sounds.** `play`, `playlooped` and `play2` are `PLAY_SOUND`,
-      `stopsound` is `STOP_SOUND` and `stopmidi` is `STOP_MIDI`, each for
-      the script's level (`PROTOCOL.md`, `0x48` to `0x4A`). The mock
-      gserver receives them in the loopback test. `play2`'s volume is not
-      carried.
+## Done record (milestones 1–3)
 
-- [x] **`setshape`.** Sent as `NPC_SHAPE` (`0x4B`): kind, width and height
-      in pixels. The NPC prop stream has no shape prop.
+Kept short; the old per-item ticks lived here before this refresh.
 
-- [x] **A script's own `triggeraction`.** Sent as `NPC_TRIGGER_ACTION`
-      (`0x4C`) for the script's level, with the action and its params.
+- [x] Milestone 1 link (auth, levels, players) —
+      `docs/lab/2026-10-31-milestone1.md`.
+- [x] Milestone 2 scripts, effects, sounds, shape, triggers, player
+      props, mock gserver round-trips (`PROTOCOL.md`, `src/effects.rs`).
+- [x] `playerleaves` (`#20`, `v0.1.1`).
+- [x] `GRNPC001` NPC files, level-less NPCs, `playerlogin` /
+      `playerlogout` (`#21`, `#24`, `#25`).
+- [x] Sample world + Milestone 3 lab (`#35`, `#36`).
+- [x] `sendtonc` / `sendtorc` produce + gserver staff delivery (`#42`,
+      gserver `#139`, `#44`).
+- [x] Recovery-file preserve (`#39`); link read-ahead bound (`#41`).
+- [x] seihai-core pins through `v0.4.0` (`#43`, `#45`).
 
-- [x] **Rupees, darts and bombs.** `playerrupees`, `playerdarts` and
-      `playerbombs` are `SET_PLAYER_PROPS`: prop 3 as a GINT3, props 4 and
-      5 as GCHARs. No new link message.
+## Not in this repo
 
-- [x] **Server NPCs hearing each other's `triggeraction`.** Already done
-      by `seihai-core`'s engine inside each level: the NPCs under the point
-      get `action<name>` with the params. A trigger that answers itself is
-      cut off after 1000 queued calls in one step, and every round still
-      sends its effects (and an `NPC_TRIGGER_ACTION`) to the gserver. A test
-      pins both.
-
-- [x] **Sword and shield power.** `playerswordpower` and
-      `playershieldpower` are `SET_PLAYER_PROPS` props 8 and 9, keeping the
-      image the gserver last sent for that player. With no image known,
-      the bare power form.
-
-- [x] **The rest of the logged-only effects.** `playerhp` is
-      `SET_PLAYER_PROPS` prop 2, the same half-hearts value as
-      `playerhearts` (the reference server treats `hp` that way). `sendtoserver`
-      and setting the selected weapon stay logged and skipped on purpose:
-      the reference server's scripts have neither. `sendtonc` and
-      `sendtorc` are link messages now (see Open).
-
-## Open
-
-- [x] **`seihai-gserver` applies the messages.** Merged in
-      squirelworks/seihai-gserver#62; its stage 5 issue #53 is closed.
-      The sample world and recorded milestone 3 lab run below exercise
-      this integration (#35, #36).
-- [x] **`playerleaves` runs.** `session` fires it, and `seihai-core`
-      `v0.0.6` lists it as a 2.1-era event (seihai #390), so
-      `if (playerleaves)` runs. Test: `scripts::tests::playerleaves_runs`.
-- [x] **GServer-v2 style NPC files.** `npcdb` reads `GRNPC001` files
-      beside ours (issue #21; `docs/ARCHITECTURE.md`, "GServer-v2 world
-      folders"). Checked on a copy of the fork's `npcdemo` world:
-      `docs/lab/2026-11-12-grnpc-npcdemo.md`.
-- [x] **Level-less NPCs.** A `GRNPC001` file with an empty `STARTLEVEL`
-      (the fork's Control-NPC, `TYPE CONTROL`) runs in a world of its own
-      and gets `playerlogin`/`playerlogout` (`docs/ARCHITECTURE.md`).
-- [x] **`playerlogin`/`playerlogout` blocks run.** `seihai-core` `v0.0.7`
-      lists them (seihai #416). Test:
-      `scripts::tests::level_less_npcs_get_playerlogin_and_playerlogout`.
-- [x] **`sendtonc` and `sendtorc`.** Sent as `SEND_TO_NC` (`0x4D`) and
-      `SEND_TO_RC` (`0x4E`): the script's text, with `#a` and bare `#n`
-      already expanded by the engine and `#n(id)` expanded here. A
-      level-less NPC's line goes out. Tests:
-      `effects::tests::sendtonc_and_sendtorc_are_staff_lines`,
-      `scripts::tests::level_less_staff_lines_go_out`, and the loopback
-      `chat_weapons_pm_flags_and_trigger_round_trip`. The NPC-server
-      produces the lines. The gserver delivers `SEND_TO_NC` to every
-      logged-in NPC Control session and `SEND_TO_RC` to every
-      logged-in Remote Control session, each as `PLO_RC_CHAT` (74).
-      An empty text is still delivered. A player receives neither.
-      This is not a historical rights check. A finer
-      NC-versus-RC-rights rule is still unresolved.
-- [x] **Gserver delivery of `SEND_TO_NC` and `SEND_TO_RC`.** Merged in
-      squirelworks/seihai-gserver#139
-      (`06374e931cfbd992b8c8d0de192a7976705e161e`). The NPC-server
-      produces the lines. The gserver delivers `SEND_TO_NC` to every
-      logged-in NPC Control session and `SEND_TO_RC` to every
-      logged-in Remote Control session, each as `PLO_RC_CHAT` (74).
-      An empty text is still delivered. A player receives neither.
-      This is not a historical rights check. A finer
-      NC-versus-RC-rights rule is still unresolved. This repo's mock
-      records the lines.
-- [x] **A v0.1.1 release.** Published 2026-11-12; notes in
-      `docs/releases/v0.1.1.md`. The Rust gserver now pins this crate's
-      later commit `21de1ca` (#34), which uses seihai-core v0.1.0.
-- [x] **seihai-core pin `v0.2.16`.** `Cargo.toml` pins
-      `squirelworks/seihai-core` tag `v0.2.16`
-      (`8fb62fbfa2bc770412de8cc470e2f1269676667c`); it was tag `v0.1.0`
-      (`708e9e4c19e45bc3db85528e37013921fedb1f10`). `default-features`
-      stays off. No Rust source changed. On Linux, Rust 1.100, the
-      existing loopback `cargo test`, `cargo fmt --check` and
-      `cargo clippy --all-targets -- -D warnings` passed. No real client
-      was run, and macOS was not run. That records the pin, not a new
-      client result. The `21de1ca` (#34) line above still used `v0.1.0`.
-
-- [x] **seihai-core pin `v0.4.0`.** The manifest and lockfile select the
-      published tag at `eb7434ac1fbddc35d127ab4bbe8717e8bf1d64e7`,
-      replacing `v0.2.16`; `default-features` remains off. This repository
-      has one manifest and lockfile and no exhaustive `Era` match to extend.
-      The server still explicitly selects `Era::V217`. Core's new `V140`
-      vocabulary registration does not establish native behavior or argument
-      semantics for that version, or select a new NPC-server era. No Rust
-      source or staff-delivery contract changes accompany this pin.
-      Validation is the exact-head Linux/Windows consumer CI attached to
-      this change; no original-client or macOS run is claimed.
-
-The remaining NPC Control editor and server-side GS2 work is tracked in
-roadmap #22. The level-NPC editor in servertools does not edit database NPCs;
-the GS1-to-GS2 compiler issue (squirelworks/seihai-core#6) explicitly excludes
-the NPC-server's GS2 host integration.
-
-## Milestone 3
-
-`seihai-gserver` applies the NPC-server's messages since
-squirelworks/seihai-gserver#62.
-
-- [x] **Sample world.** `examples/m3-world`: a greeter, a shop that takes
-      gralats, a gate that opens on a server flag and a trainer that
-      gives a weapon by script (`examples/m3-world/README.md`). Tests:
-      `tests/sample_world.rs`. What it needed here:
-  - Players talk to NPCs by chatting: a chat line (prop 12) in
-    `PLAYER_PROPS` runs `playerchats` on the player's level with `#c`
-    set. The gserver's echo of a chat line this server set
-    (`setplayerprop #c`) is not counted.
-  - The player view carries gralats (prop 3), arrows (4) and bombs (5),
-    so `playerrupees` and the rest read the player's real counts.
-  - A `server.` flag a script sets is seen by every level at once, and a
-    flag with no value reads as 1, so `if (server.gateopen)` works.
-- [x] **Lab run** on seihai-gserver with real 2.05 rev 2, 2.17.1, 2.22 and
-      2.31 under Wine, and Seihai: every step passed on all five
-      (`docs/lab/2026-11-14-m3-sample-world.md`).
+Graal3D hosting (G3D-9) stays next to `seihai-g3d`. This binary stays on
+the 2D / gen-5 gserver link.
