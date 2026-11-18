@@ -567,6 +567,65 @@ impl Scripts {
         Ok(produced)
     }
 
+    /// NPC Control: a new database NPC (`NC_NPC_ADD`). Its file is
+    /// `npcs/npc<name>.txt` in the `GRNPC001` format with an empty script;
+    /// it gets the next free id (on the next start ids follow file names
+    /// again) and its level starts again with it. A name that is taken, or
+    /// that is not a plain file name, is refused, and so is an existing
+    /// file.
+    pub fn nc_add(
+        &mut self,
+        name: &str,
+        kind: &str,
+        scripter: &str,
+        level: &[u8],
+        x2: u16,
+        y2: u16,
+    ) -> Result<Produced, String> {
+        let name = name.trim();
+        let plain = !name.is_empty()
+            && name.len() <= 64
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b' '))
+            && !name.starts_with('.');
+        if !plain {
+            return Err(format!("{name:?} is not an NPC name this server can file"));
+        }
+        if self.npcs.iter().any(|n| n.name.eq_ignore_ascii_case(name)) {
+            return Err(format!("there is already an NPC {name}"));
+        }
+        let level_text = seihai_core::protocol::latin1(level);
+        let (x, y) = (f64::from(x2) / 2.0, f64::from(y2) / 2.0);
+        let one_line = |s: &str| s.replace(['\r', '\n'], " ").trim().to_string();
+        let text = format!(
+            "GRNPC001\nNAME {name}\nTYPE {}\nSCRIPTER {}\nSTARTLEVEL {}\nSTARTX {x:.2}\nSTARTY {y:.2}\nNPCSCRIPT\nNPCSCRIPTEND\n",
+            one_line(kind),
+            one_line(scripter),
+            one_line(&level_text),
+        );
+        let id = self.npcs.iter().map(|n| n.id).max().unwrap_or(0) + 1;
+        let mut def = crate::npcdb::parse_grnpc(id, name, &text)?;
+        if let Some(dir) = &self.world_dir {
+            let npcs = dir.join("npcs");
+            std::fs::create_dir_all(&npcs).map_err(|e| format!("{}: {e}", npcs.display()))?;
+            let path = npcs.join(format!("npc{name}.txt"));
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            f.write_all(text.as_bytes())
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            def.path = Some(path);
+        }
+        let level = def.level.clone();
+        self.npcs.push(def);
+        self.npc_count += 1;
+        Ok(self.restart_level(&level))
+    }
+
     /// Build `level`'s script world again from the database and, once the
     /// scripts run, start it. The players see the level's NPCs go and come
     /// back with their new state.
@@ -1314,6 +1373,38 @@ mod tests {
         assert!(text.contains("level=house.nw\nx=30.5\ny=20\n"), "{text}");
         assert!(s.nc_warp(1, b"", 0, 0).is_err());
         assert!(s.nc_warp(99, b"a.nw", 0, 0).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn npc_control_adds_an_npc() {
+        let (dir, mut s) = delete_world("add");
+        let added = s
+            .nc_add("Guard", "OBJECT", "boss", b"start.nw", 61, 40)
+            .unwrap();
+        assert!(added.messages.iter().any(|m| matches!(
+            m,
+            Message::NcNpc { npc_id: 2, name, kind, level }
+                if name == b"Guard" && kind == b"OBJECT" && level == b"start.nw"
+        )));
+        assert!(added.messages.iter().any(|m| matches!(
+            m,
+            Message::NpcAdded { npc_id: 2, level, .. } if level == b"start.nw"
+        )));
+        let file = std::fs::read_to_string(dir.join("npcs/npcGuard.txt")).unwrap();
+        assert_eq!(
+            file,
+            "GRNPC001\nNAME Guard\nTYPE OBJECT\nSCRIPTER boss\nSTARTLEVEL start.nw\nSTARTX 30.50\nSTARTY 20.00\nNPCSCRIPT\nNPCSCRIPTEND\n"
+        );
+        // It reads back on the next start, and a script can be set on it.
+        let (back, problems) = crate::npcdb::load(&dir).unwrap();
+        assert!(problems.is_empty(), "{problems:?}");
+        assert!(back.iter().any(|n| n.name == "Guard" && n.x == 30.5));
+        assert!(s.nc_set_script(2, "if (created) { message hi; }").is_ok());
+        // Taken, unsafe and empty names are refused; nothing is overwritten.
+        assert!(s.nc_add("guard", "", "", b"start.nw", 0, 0).is_err());
+        assert!(s.nc_add("../x", "", "", b"start.nw", 0, 0).is_err());
+        assert!(s.nc_add(" ", "", "", b"start.nw", 0, 0).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
