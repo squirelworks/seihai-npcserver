@@ -511,6 +511,32 @@ fn handle(
             Some(Err(e)) => log(format!("NPC Control: delete refused: {e}")),
             None => log("NPC Control: delete with no scripts loaded".into()),
         },
+        Message::NcNpcReset { npc_id } => match scripts.map(|s| s.nc_reset(npc_id)) {
+            Some(Ok(produced)) => {
+                log(format!("NPC Control: NPC {npc_id} reset"));
+                log_produced(&produced, log);
+                out.extend(produced.messages);
+            }
+            Some(Err(e)) => log(format!("NPC Control: reset refused: {e}")),
+            None => log("NPC Control: reset with no scripts loaded".into()),
+        },
+        Message::NcNpcWarp {
+            npc_id,
+            level,
+            x,
+            y,
+        } => match scripts.map(|s| s.nc_warp(npc_id, &level, x, y)) {
+            Some(Ok(produced)) => {
+                log(format!(
+                    "NPC Control: NPC {npc_id} warped to {}",
+                    seihai_core::protocol::latin1(&level)
+                ));
+                log_produced(&produced, log);
+                out.extend(produced.messages);
+            }
+            Some(Err(e)) => log(format!("NPC Control: warp refused: {e}")),
+            None => log("NPC Control: warp with no scripts loaded".into()),
+        },
         Message::NcNpc { .. } | Message::NcText { .. } => note_once(
             seen_unknown,
             link::id::NC_NPC,

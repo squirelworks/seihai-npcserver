@@ -233,6 +233,8 @@ logs and skips them, as for any unknown id.
 | `0x82` | `NC_TEXT` | NPC → GS | `request: u32`, `found: u8` (1 yes, 0 no such NPC), `text: blob` |
 | `0x83` | `NC_SCRIPT_SET` | GS → NPC | `npc_id: u32`, `script: blob` |
 | `0x84` | `NC_NPC_DELETE` | both | `npc_id: u32` |
+| `0x85` | `NC_NPC_RESET` | GS → NPC | `npc_id: u32` |
+| `0x86` | `NC_NPC_WARP` | GS → NPC | `npc_id: u32`, `level: str`, `x: u16`, `y: u16` (half tiles) |
 
 - `NC_NPC` names one database NPC. The NPC-server sends one for every NPC
   after the `NPC_ADDED` messages when its scripts start, and again for each
@@ -256,7 +258,16 @@ logs and skips them, as for any unknown id.
   Recovery uses a hard link before removing the original name, so the world
   filesystem must support hard links. If removing the original fails, both
   names remain and the NPC stays loaded; the refusal log names the recovery.
-- A set has no reply; a delete has only the one above. A refusal (no such
+- `NC_NPC_RESET` starts the NPCs of that NPC's level again from the
+  database, as a script set does: they go (`NPC_DELETED`), come back
+  (`NPC_ADDED`, `NC_NPC`) and run `created`, losing what their scripts
+  changed since.
+- `NC_NPC_WARP` moves the NPC: its file gets the new level and position
+  (`LEVEL`/`X`/`Y`, or `STARTLEVEL`/`STARTX`/`STARTY` in a `GRNPC001`
+  file), it leaves the old level (`NPC_DELETED`, then that level's other
+  NPCs start again) and the new level's NPCs start with it. An empty level
+  is refused.
+- A set, a reset and a warp have no reply; a delete has only the one above. A refusal (no such
   NPC, a file that cannot be written) is logged by the NPC-server.
 
 ### 0x90 to 0xFF: *reserved*
@@ -311,3 +322,4 @@ messages; the NPC-server already sends them) turns the link off, and
 | 1 | 2026-11-14 | `SEND_TO_NC` (`0x4D`) and `SEND_TO_RC` (`0x4E`) specified. No version bump: the ids were reserved. The NPC-server produces them. Intended recipient categories are logged-in NPC Control for `sendtonc` and Remote Control for `sendtorc`. |
 | 1 | 2026-11-14 | No protocol change. The gserver delivers `SEND_TO_NC` to every logged-in NPC Control session and `SEND_TO_RC` to every logged-in Remote Control session, each as `PLO_RC_CHAT` (74). An empty text is still delivered. A player receives neither. This is not a historical rights check. A finer NC-versus-RC-rights rule is still unresolved (roadmap #22). |
 | 1 | 2026-11-14 | No protocol change. The gserver sends `PM_TO_NPC` for a new non-empty chat line and `TRIGGER_ACTION` for `PLI_TRIGGERACTION` (38). |
+| 1 | 2026-11-18 | `NC_NPC_RESET` (`0x85`) and `NC_NPC_WARP` (`0x86`) specified and built on the NPC-server side. No version bump: the ids were reserved, and a side that does not know them logs and skips them. |
