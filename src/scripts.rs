@@ -511,6 +511,62 @@ impl Scripts {
         Ok(produced)
     }
 
+    /// NPC Control: start an NPC again (`NC_NPC_RESET`). Its level's NPCs
+    /// are built again from the database, so they run `created` once more
+    /// and lose what their scripts changed since.
+    pub fn nc_reset(&mut self, npc_id: u32) -> Result<Produced, String> {
+        let level = self
+            .npcs
+            .iter()
+            .find(|n| n.id == npc_id)
+            .map(|n| n.level.clone())
+            .ok_or_else(|| format!("no NPC {npc_id}"))?;
+        Ok(self.restart_level(&level))
+    }
+
+    /// NPC Control: move an NPC (`NC_NPC_WARP`) to `level` at (`x2`,
+    /// `y2`) half tiles. The file keeps the new place (`npcdb::with_position`),
+    /// and the old and new levels start again.
+    pub fn nc_warp(
+        &mut self,
+        npc_id: u32,
+        level: &[u8],
+        x2: u16,
+        y2: u16,
+    ) -> Result<Produced, String> {
+        if level.is_empty() {
+            return Err(format!("NPC {npc_id}: no level to warp to"));
+        }
+        let n = self
+            .npcs
+            .iter_mut()
+            .find(|n| n.id == npc_id)
+            .ok_or_else(|| format!("no NPC {npc_id}"))?;
+        let (x, y) = (f64::from(x2) / 2.0, f64::from(y2) / 2.0);
+        if let Some(path) = &n.path {
+            let text = String::from_utf8_lossy(
+                &std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?,
+            )
+            .into_owned();
+            let level_text = seihai_core::protocol::latin1(level);
+            let new = crate::npcdb::with_position(&text, n.format, &level_text, x, y);
+            write_file(path, &new).map_err(|e| format!("{}: {e}", path.display()))?;
+        }
+        let old = std::mem::replace(&mut n.level, level.to_vec());
+        n.x = x;
+        n.y = y;
+        let mut produced = Produced::default();
+        if old != level {
+            // Out of the old level first, so its players see it go.
+            if !old.is_empty() && self.announced {
+                produced.messages.push(Message::NpcDeleted { npc_id });
+            }
+            produced.append(self.restart_level(&old));
+        }
+        produced.append(self.restart_level(level));
+        Ok(produced)
+    }
+
     /// Build `level`'s script world again from the database and, once the
     /// scripts run, start it. The players see the level's NPCs go and come
     /// back with their new state.
@@ -1216,6 +1272,49 @@ mod tests {
             }
             std::fs::remove_dir_all(dir).unwrap();
         }
+    }
+
+    #[test]
+    fn npc_control_resets_and_warps() {
+        let (dir, mut s) = delete_world("reset-warp");
+        // Reset: the level's NPCs go and come back and run created again.
+        let reset = s.nc_reset(1).unwrap();
+        assert!(reset
+            .messages
+            .iter()
+            .any(|m| matches!(m, Message::NpcDeleted { npc_id: 1 })));
+        assert!(reset
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|t| t.contains("ding")));
+        assert!(s.nc_reset(99).is_err());
+
+        // Warp to another level at (30.5, 20): the file keeps it, the old
+        // level loses the NPC and the new one gets it.
+        let warp = s.nc_warp(1, b"house.nw", 61, 40).unwrap();
+        assert!(warp
+            .messages
+            .iter()
+            .any(|m| matches!(m, Message::NpcDeleted { npc_id: 1 })));
+        assert!(warp.messages.iter().any(|m| matches!(
+            m,
+            Message::NpcAdded { npc_id: 1, level, .. } if level == b"house.nw"
+        )));
+        let file = std::fs::read_to_string(dir.join("npcs/bell.txt")).unwrap();
+        assert!(
+            file.starts_with("LEVEL house.nw\nX 30.5\nY 20\nIMAGE bell.png\nSCRIPT\n"),
+            "{file}"
+        );
+        assert_eq!(s.levels().collect::<Vec<_>>(), [b"house.nw".as_slice()]);
+        let text = match s.nc_get(1, 1, crate::link::nc_get::ATTRIBUTES) {
+            Message::NcText { text, .. } => String::from_utf8_lossy(&text).into_owned(),
+            other => panic!("{other:?}"),
+        };
+        assert!(text.contains("level=house.nw\nx=30.5\ny=20\n"), "{text}");
+        assert!(s.nc_warp(1, b"", 0, 0).is_err());
+        assert!(s.nc_warp(99, b"a.nw", 0, 0).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     fn delete_world(tag: &str) -> (PathBuf, Scripts) {

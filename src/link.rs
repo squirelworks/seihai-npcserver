@@ -61,6 +61,8 @@ pub mod id {
     pub const NC_TEXT: u8 = 0x82;
     pub const NC_SCRIPT_SET: u8 = 0x83;
     pub const NC_NPC_DELETE: u8 = 0x84;
+    pub const NC_NPC_RESET: u8 = 0x85;
+    pub const NC_NPC_WARP: u8 = 0x86;
 }
 
 /// What an `NC_GET` asks for.
@@ -248,6 +250,19 @@ pub enum Message {
     NcNpcDelete {
         npc_id: u32,
     },
+    /// NPC Control: start an NPC again (GS → NPC). Its level's NPCs are
+    /// built again from the database and run `created`.
+    NcNpcReset {
+        npc_id: u32,
+    },
+    /// NPC Control: move an NPC to `level` at (`x`, `y`) in half tiles
+    /// (GS → NPC). The NPC's file keeps the new place.
+    NcNpcWarp {
+        npc_id: u32,
+        level: Vec<u8>,
+        x: u16,
+        y: u16,
+    },
     /// A message this code does not know. Kept so it can be logged and skipped.
     Unknown {
         id: u8,
@@ -294,6 +309,8 @@ impl Message {
             Message::NcText { .. } => id::NC_TEXT,
             Message::NcScriptSet { .. } => id::NC_SCRIPT_SET,
             Message::NcNpcDelete { .. } => id::NC_NPC_DELETE,
+            Message::NcNpcReset { .. } => id::NC_NPC_RESET,
+            Message::NcNpcWarp { .. } => id::NC_NPC_WARP,
             Message::Unknown { id, .. } => *id,
         }
     }
@@ -487,7 +504,20 @@ impl Message {
                 d.extend_from_slice(&npc_id.to_be_bytes());
                 put_blob(&mut d, script)?;
             }
-            Message::NcNpcDelete { npc_id } => d.extend_from_slice(&npc_id.to_be_bytes()),
+            Message::NcNpcDelete { npc_id } | Message::NcNpcReset { npc_id } => {
+                d.extend_from_slice(&npc_id.to_be_bytes())
+            }
+            Message::NcNpcWarp {
+                npc_id,
+                level,
+                x,
+                y,
+            } => {
+                d.extend_from_slice(&npc_id.to_be_bytes());
+                put_str(&mut d, level)?;
+                d.extend_from_slice(&x.to_be_bytes());
+                d.extend_from_slice(&y.to_be_bytes());
+            }
             Message::Unknown { data, .. } => d.extend_from_slice(data),
         }
         let len = u32::try_from(d.len()).map_err(|_| invalid("message over 4 GiB"))?;
@@ -641,6 +671,13 @@ impl Message {
                 script: r.blob()?,
             },
             id::NC_NPC_DELETE => Message::NcNpcDelete { npc_id: r.u32()? },
+            id::NC_NPC_RESET => Message::NcNpcReset { npc_id: r.u32()? },
+            id::NC_NPC_WARP => Message::NcNpcWarp {
+                npc_id: r.u32()?,
+                level: r.str()?,
+                x: r.u16()?,
+                y: r.u16()?,
+            },
             other => Message::Unknown {
                 id: other,
                 data: data.to_vec(),
@@ -973,6 +1010,13 @@ mod tests {
                 script: b"if (playerenters) { message hi; }".to_vec(),
             },
             Message::NcNpcDelete { npc_id: 3 },
+            Message::NcNpcReset { npc_id: 3 },
+            Message::NcNpcWarp {
+                npc_id: 3,
+                level: b"b.nw".to_vec(),
+                x: 61,
+                y: 20,
+            },
             Message::Unknown {
                 id: 0x99,
                 data: vec![1, 2, 3],

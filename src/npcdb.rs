@@ -302,6 +302,88 @@ pub fn with_script(text: &str, format: NpcFormat, script: &str) -> String {
     out
 }
 
+/// `text`, an NPC file in `format`, with its level and position set:
+/// `LEVEL`/`X`/`Y` in ours, `STARTLEVEL`/`STARTX`/`STARTY` in a
+/// `GRNPC001` file. Lines before the script block that name those keys
+/// are replaced; missing ones are added before the script (after the
+/// magic line of a `GRNPC001` file). Everything else stays as it was.
+pub fn with_position(text: &str, format: NpcFormat, level: &str, x: f64, y: f64) -> String {
+    let (kl, kx, ky, open) = match format {
+        NpcFormat::Seihai => ("LEVEL", "X", "Y", "SCRIPT"),
+        NpcFormat::Grnpc => ("STARTLEVEL", "STARTX", "STARTY", "NPCSCRIPT"),
+    };
+    let num = |v: f64| {
+        if format == NpcFormat::Grnpc {
+            format!("{v:.2}")
+        } else if v.fract() == 0.0 {
+            format!("{v}")
+        } else {
+            format!("{v:.1}")
+        }
+    };
+    let wanted = [(kl, level.to_string()), (kx, num(x)), (ky, num(y))];
+    let mut seen = [false; 3];
+    let mut out = String::new();
+    let mut in_script = false;
+    let mut header_done = format == NpcFormat::Seihai;
+    let mut missing_written = false;
+    let write_missing = |out: &mut String, seen: &[bool; 3]| {
+        for (i, (k, v)) in wanted.iter().enumerate() {
+            if !seen[i] {
+                out.push_str(&format!("{k} {v}\n"));
+            }
+        }
+    };
+    let close = if format == NpcFormat::Seihai {
+        "SCRIPTEND"
+    } else {
+        "NPCSCRIPTEND"
+    };
+    for line in text.lines() {
+        let bare = line.trim_end_matches('\r');
+        if in_script {
+            if bare == close {
+                in_script = false;
+            }
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        if !header_done {
+            // The `GRNPC001` magic line stays first.
+            header_done = true;
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        if bare == open {
+            if !missing_written {
+                write_missing(&mut out, &seen);
+                missing_written = true;
+            }
+            in_script = true;
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        let key = bare.split_whitespace().next().unwrap_or("");
+        match wanted.iter().position(|(k, _)| *k == key) {
+            Some(i) if !missing_written => {
+                seen[i] = true;
+                out.push_str(&format!("{} {}\n", wanted[i].0, wanted[i].1));
+            }
+            _ => {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+    }
+    if !missing_written {
+        write_missing(&mut out, &seen);
+    }
+    out
+}
+
 fn push_block(out: &mut String, open: &str, close: &str, script: &str) {
     out.push_str(open);
     out.push('\n');
@@ -322,6 +404,40 @@ mod tests {
     use super::*;
 
     const SAMPLE: &str = "LEVEL onlinestartlocal.nw\nX 30\nY 30.5\nIMAGE block.png\nSCRIPT\nif (created) {\n  message hello;\n}\nSCRIPTEND\n";
+
+    #[test]
+    fn a_new_position_keeps_the_rest_of_the_file() {
+        let text = with_position(SAMPLE, NpcFormat::Seihai, "b.nw", 12.5, 7.0);
+        assert_eq!(
+            text,
+            SAMPLE
+                .replace("LEVEL onlinestartlocal.nw", "LEVEL b.nw")
+                .replace("X 30\n", "X 12.5\n")
+                .replace("Y 30.5\n", "Y 7\n")
+        );
+        // A script line that looks like a key is not touched.
+        let tricky = "LEVEL a.nw\nSCRIPT\nX 1\nSCRIPTEND\n";
+        assert_eq!(
+            with_position(tricky, NpcFormat::Seihai, "b.nw", 2.0, 3.0),
+            "LEVEL b.nw\nX 2\nY 3\nSCRIPT\nX 1\nSCRIPTEND\n"
+        );
+        let grnpc = "GRNPC001\nNAME Bell\nSTARTLEVEL a.nw\nSTARTX 1.00\nNPCSCRIPT\nSTARTY 9\nNPCSCRIPTEND\n";
+        assert_eq!(
+            with_position(grnpc, NpcFormat::Grnpc, "b.nw", 30.5, 20.0),
+            "GRNPC001\nNAME Bell\nSTARTLEVEL b.nw\nSTARTX 30.50\nSTARTY 20.00\nNPCSCRIPT\nSTARTY 9\nNPCSCRIPTEND\n"
+        );
+        // The new place reads back.
+        let back = parse_file(
+            1,
+            "bell",
+            &with_position(SAMPLE, NpcFormat::Seihai, "b.nw", 12.5, 7.0),
+        )
+        .unwrap();
+        assert_eq!(
+            (back.level.as_slice(), back.x, back.y),
+            (b"b.nw".as_slice(), 12.5, 7.0)
+        );
+    }
 
     #[test]
     fn a_new_script_keeps_the_rest_of_the_file() {
