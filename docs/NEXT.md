@@ -34,8 +34,9 @@ when the matching PR merges. Rules: `AGENTS.md`.
       and warp are on the link as `0x85`/`0x86` (NPC-server side; the
       gserver still has to send them). Classes and weapons are served by
       the gserver from its own `scripts/` and `weapons/` folders
-      (squirelworks/seihai-gserver#157). Still open: NPC add (NC 111) and
-      NPC flags (NC 108/110).
+      (squirelworks/seihai-gserver#157). NPC add is on the link as `0x87`
+      (NPC-server side; the gserver still has to send it). Still open: NPC
+      flags (NC 108/110).
 - [ ] **servertools database-NPC editor:** the LAT level-NPC editor does
       not edit database NPCs (seihai-servertools#50).
 - [ ] **Server-side GS2:** define and implement the NPC-server

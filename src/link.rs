@@ -63,6 +63,7 @@ pub mod id {
     pub const NC_NPC_DELETE: u8 = 0x84;
     pub const NC_NPC_RESET: u8 = 0x85;
     pub const NC_NPC_WARP: u8 = 0x86;
+    pub const NC_NPC_ADD: u8 = 0x87;
 }
 
 /// What an `NC_GET` asks for.
@@ -263,6 +264,17 @@ pub enum Message {
         x: u16,
         y: u16,
     },
+    /// NPC Control: a new database NPC (GS → NPC), from NC's Add NPC
+    /// dialog. `x` and `y` are half tiles; an empty `level` makes a
+    /// level-less NPC. The script starts empty.
+    NcNpcAdd {
+        name: Vec<u8>,
+        kind: Vec<u8>,
+        scripter: Vec<u8>,
+        level: Vec<u8>,
+        x: u16,
+        y: u16,
+    },
     /// A message this code does not know. Kept so it can be logged and skipped.
     Unknown {
         id: u8,
@@ -311,6 +323,7 @@ impl Message {
             Message::NcNpcDelete { .. } => id::NC_NPC_DELETE,
             Message::NcNpcReset { .. } => id::NC_NPC_RESET,
             Message::NcNpcWarp { .. } => id::NC_NPC_WARP,
+            Message::NcNpcAdd { .. } => id::NC_NPC_ADD,
             Message::Unknown { id, .. } => *id,
         }
     }
@@ -518,6 +531,21 @@ impl Message {
                 d.extend_from_slice(&x.to_be_bytes());
                 d.extend_from_slice(&y.to_be_bytes());
             }
+            Message::NcNpcAdd {
+                name,
+                kind,
+                scripter,
+                level,
+                x,
+                y,
+            } => {
+                put_str(&mut d, name)?;
+                put_str(&mut d, kind)?;
+                put_str(&mut d, scripter)?;
+                put_str(&mut d, level)?;
+                d.extend_from_slice(&x.to_be_bytes());
+                d.extend_from_slice(&y.to_be_bytes());
+            }
             Message::Unknown { data, .. } => d.extend_from_slice(data),
         }
         let len = u32::try_from(d.len()).map_err(|_| invalid("message over 4 GiB"))?;
@@ -674,6 +702,14 @@ impl Message {
             id::NC_NPC_RESET => Message::NcNpcReset { npc_id: r.u32()? },
             id::NC_NPC_WARP => Message::NcNpcWarp {
                 npc_id: r.u32()?,
+                level: r.str()?,
+                x: r.u16()?,
+                y: r.u16()?,
+            },
+            id::NC_NPC_ADD => Message::NcNpcAdd {
+                name: r.str()?,
+                kind: r.str()?,
+                scripter: r.str()?,
                 level: r.str()?,
                 x: r.u16()?,
                 y: r.u16()?,
@@ -1016,6 +1052,14 @@ mod tests {
                 level: b"b.nw".to_vec(),
                 x: 61,
                 y: 20,
+            },
+            Message::NcNpcAdd {
+                name: b"Guard".to_vec(),
+                kind: b"OBJECT".to_vec(),
+                scripter: b"boss".to_vec(),
+                level: b"start.nw".to_vec(),
+                x: 60,
+                y: 61,
             },
             Message::Unknown {
                 id: 0x99,

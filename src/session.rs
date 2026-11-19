@@ -537,6 +537,27 @@ fn handle(
             Some(Err(e)) => log(format!("NPC Control: warp refused: {e}")),
             None => log("NPC Control: warp with no scripts loaded".into()),
         },
+        Message::NcNpcAdd {
+            name,
+            kind,
+            scripter,
+            level,
+            x,
+            y,
+        } => {
+            let name = seihai_core::protocol::latin1(&name);
+            let kind = seihai_core::protocol::latin1(&kind);
+            let scripter = seihai_core::protocol::latin1(&scripter);
+            match scripts.map(|s| s.nc_add(&name, &kind, &scripter, &level, x, y)) {
+                Some(Ok(produced)) => {
+                    log(format!("NPC Control: NPC {name} added"));
+                    log_produced(&produced, log);
+                    out.extend(produced.messages);
+                }
+                Some(Err(e)) => log(format!("NPC Control: add refused: {e}")),
+                None => log("NPC Control: add with no scripts loaded".into()),
+            }
+        }
         Message::NcNpc { .. } | Message::NcText { .. } => note_once(
             seen_unknown,
             link::id::NC_NPC,
