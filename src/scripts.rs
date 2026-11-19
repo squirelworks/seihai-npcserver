@@ -62,6 +62,9 @@ pub struct Scripts {
     pending_logs: Vec<(Vec<u8>, String)>,
     /// Inbound notes already logged (`PM` on a level with no NPCs, and so on).
     noted: BTreeSet<String>,
+    /// `<world>/config/tiletypes.txt`, when the world has one: with it,
+    /// each level world knows its walls (`onwall`, `move` option 32).
+    tiletypes: Option<seihai_core::assets::TileTypes>,
 }
 
 impl Scripts {
@@ -81,6 +84,7 @@ impl Scripts {
             server_flags: BTreeMap::new(),
             pending_logs: Vec::new(),
             noted: BTreeSet::new(),
+            tiletypes: None,
         }
     }
 
@@ -90,6 +94,13 @@ impl Scripts {
     pub fn with_world(era: Era, world: impl AsRef<Path>) -> Self {
         let mut s = Self::new(era);
         s.world_dir = Some(world.as_ref().to_path_buf());
+        let types = world.as_ref().join("config").join(TILETYPES_FILE);
+        if types.exists() {
+            match seihai_core::assets::TileTypes::load(&types) {
+                Ok(t) => s.tiletypes = Some(t),
+                Err(e) => eprintln!("{}: {e}; levels have no walls", types.display()),
+            }
+        }
         s
     }
 
@@ -124,6 +135,13 @@ impl Scripts {
                 w.set_online(true, true);
                 w
             });
+            if world.core.walls.is_none() {
+                world.core.walls = level_walls(
+                    self.world_dir.as_deref(),
+                    self.tiletypes.as_ref(),
+                    &npc.level,
+                );
+            }
             world
                 .add(ObjSpec::npc(&npc.image, npc.x, npc.y, &npc.script).with_tag(npc.id as usize));
         }
@@ -588,6 +606,7 @@ impl Scripts {
             return produced;
         }
         let mut w = ScriptWorld::new(self.era);
+        w.core.walls = level_walls(self.world_dir.as_deref(), self.tiletypes.as_ref(), level);
         w.set_online(true, true);
         for n in &mine {
             w.add(ObjSpec::npc(&n.image, n.x, n.y, &n.script).with_tag(n.id as usize));
@@ -756,6 +775,36 @@ fn latin1_bytes(s: &str) -> Vec<u8> {
 }
 
 /// Write through a temporary file, so a failed write keeps the old one.
+/// The world's tile-type table, in `config/` (`TileTypes::load` reads it:
+/// a flat list of 4096 type bytes or `index,x,y,type,name` rows). The
+/// stock tables are the client's, so a world brings its own.
+pub const TILETYPES_FILE: &str = "tiletypes.txt";
+
+/// A level's walls, one flag a tile, from `<world>/levels/<level>` and the
+/// tile types. `None` (no walls known) when either is missing or the level
+/// does not read.
+fn level_walls(
+    world: Option<&Path>,
+    types: Option<&seihai_core::assets::TileTypes>,
+    level: &[u8],
+) -> Option<Vec<bool>> {
+    let (world, types) = (world?, types?);
+    let name = seihai_core::protocol::latin1(level);
+    if name.is_empty() || name.contains(['/', '\\']) || name.starts_with('.') {
+        return None;
+    }
+    let bytes = std::fs::read(world.join("levels").join(&name)).ok()?;
+    let l = seihai_core::assets::Level::from_bytes(&bytes).ok()?;
+    Some(
+        (0..64 * 64)
+            .map(|i| {
+                l.kind_at(types, (i % 64) as f32 + 0.5, (i / 64) as f32 + 0.5)
+                    == seihai_core::assets::TileKind::Blocking
+            })
+            .collect(),
+    )
+}
+
 fn write_file(path: &Path, text: &str) -> std::io::Result<()> {
     let tmp = path.with_extension("txt.new");
     std::fs::write(&tmp, text)?;
@@ -1314,6 +1363,55 @@ mod tests {
         assert!(text.contains("level=house.nw\nx=30.5\ny=20\n"), "{text}");
         assert!(s.nc_warp(1, b"", 0, 0).is_err());
         assert!(s.nc_warp(99, b"a.nw", 0, 0).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn levels_know_their_walls_from_the_worlds_tile_types() {
+        let dir = std::env::temp_dir().join(format!("seihai-walls-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for d in ["npcs", "levels", "config"] {
+            std::fs::create_dir_all(dir.join(d)).unwrap();
+        }
+        // Tile 1 is a wall (type 22); column 15 of the level is tile 1.
+        let mut types = vec!["0"; 4096];
+        types[1] = "22";
+        std::fs::write(dir.join("config").join(TILETYPES_FILE), types.join(",")).unwrap();
+        let row: String = (0..64).map(|x| if x == 15 { "AB" } else { "AA" }).collect();
+        let mut nw = String::from("GLEVNW01\n");
+        for y in 0..64 {
+            nw.push_str(&format!("BOARD 0 {y} 64 0 {row}\n"));
+        }
+        std::fs::write(dir.join("levels/start.nw"), nw).unwrap();
+        std::fs::write(
+            dir.join("npcs/probe.txt"),
+            "LEVEL start.nw\nX 10\nY 20\nIMAGE p.png\nSCRIPT\nif (created) {\n  if (onwall(15.5, 20)) set server.wall;\n  if (!onwall(14.5, 20)) set server.open;\n}\nSCRIPTEND\n",
+        )
+        .unwrap();
+        let mut s = Scripts::with_world(Era::V217, &dir);
+        s.open_database().unwrap();
+        let started = s.start();
+        let flags: Vec<String> = started
+            .messages
+            .iter()
+            .filter_map(|m| match m {
+                Message::ServerFlag {
+                    name, set: true, ..
+                } => Some(show(name)),
+                _ => None,
+            })
+            .collect();
+        assert!(flags.contains(&"server.wall".to_string()), "{flags:?}");
+        assert!(flags.contains(&"server.open".to_string()), "{flags:?}");
+        // Without the table, no walls: onwall is false on the board.
+        std::fs::remove_file(dir.join("config").join(TILETYPES_FILE)).unwrap();
+        let mut s = Scripts::with_world(Era::V217, &dir);
+        s.open_database().unwrap();
+        let started = s.start();
+        assert!(!started.messages.iter().any(|m| matches!(
+            m,
+            Message::ServerFlag { name, set: true, .. } if name == b"server.wall"
+        )));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
