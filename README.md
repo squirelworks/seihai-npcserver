@@ -62,6 +62,7 @@ cargo test        # includes loopback tests against the stand-in gserver
 ```
 
 Releases for Linux, Windows and macOS are built by GitHub Actions on each `v*` tag.
+When a release happens, what the version numbers mean and what 1.0.0 needs: [VERSIONING.md](VERSIONING.md).
 
 ## Licence
 

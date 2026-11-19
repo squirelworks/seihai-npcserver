@@ -1,1 +1,4 @@
 /target
+
+# Local [patch] overrides for test builds (VERSIONING.md)
+/.cargo/config.toml
