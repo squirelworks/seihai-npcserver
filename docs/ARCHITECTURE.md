@@ -172,6 +172,17 @@ NPCSCRIPTEND
   `sendtorc`) go out as usual. `playerlogin` and
   `playerlogout` are events from `seihai-core` `v0.0.7` (seihai #416).
 
+## Level walls
+
+With a tile-type table at `<world>/config/tiletypes.txt` (the format
+`seihai_core::assets::TileTypes::load` reads: 4096 type bytes, or
+`index,x,y,type,name` rows), each level world reads `<world>/levels/<level>`
+and knows its walls: `onwall` answers from them, and `move` with option 32
+(GServer-v2 beta4's blocking mode) stops before one. The stock tables are
+the client's, so a world brings its own; without one, or for a level file
+that is missing or does not read, there are no walls (`onwall` is false on
+the board) as before.
+
 ## Decisions (ask Squirrel before changing)
 
 - Separate program, started by the gserver with `npcserver = auto` (see
