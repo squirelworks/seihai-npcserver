@@ -2,25 +2,30 @@
 
 A Graal NPC-server: a separate program that logs into seihai-gserver and runs server-side NPC scripts.
 
-Part of the Seihai server stack:
-[seihai-gserver](https://github.com/squirelworks/seihai-gserver) ·
-[seihai-npcserver](https://github.com/squirelworks/seihai-npcserver) ·
-[seihai-listserver](https://github.com/squirelworks/seihai-listserver) ·
-[seihai-rc](https://github.com/squirelworks/seihai-rc) ·
-[seihai-gserver-v2](https://github.com/squirelworks/seihai-gserver-v2) (GPL fork of GServer-v2, ships first) ·
-client: [seihai](https://github.com/squirelworks/seihai).
+Part of the Seihai project: the client [seihai](https://github.com/squirelworks/seihai)
+and its library [seihai-core](https://github.com/squirelworks/seihai-core); the Rust
+server stack [seihai-gserver](https://github.com/squirelworks/seihai-gserver),
+[seihai-listserver](https://github.com/squirelworks/seihai-listserver),
+[seihai-npcserver](https://github.com/squirelworks/seihai-npcserver),
+[seihai-rc](https://github.com/squirelworks/seihai-rc) and
+[seihai-servertools](https://github.com/squirelworks/seihai-servertools); the GPL forks
+[seihai-gserver-v2](https://github.com/squirelworks/seihai-gserver-v2) and
+[seihai-gs2lib](https://github.com/squirelworks/seihai-gs2lib); and the research notes in
+[Graal_analysis](https://github.com/squirelworks/Graal_analysis).
 
-**Status: milestone 2.** It connects to the gserver over the NPC-server
-link, authenticates, and logs the level list and player props it is sent.
-After that list it loads `<world>/npcs`, runs the server-side scripts
-(`created`, `timeout`, `playerenters`, PMs and
-`triggeraction`), and sends NPC changes, player changes, PMs and weapon
-grants back over the link. The link is specified in
-[PROTOCOL.md](PROTOCOL.md), the module map is in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), what is left is in
-[docs/NEXT.md](docs/NEXT.md), the plan is in [docs/PLAN.md](docs/PLAN.md),
-and the rules every contributor and coding agent follows are in
-[AGENTS.md](AGENTS.md).
+## Status
+
+Milestone 2 of the [plan](docs/PLAN.md) is done. The NPC-server connects to
+the gserver over the NPC-server link, authenticates, and receives the level
+list and every player's props. It then loads `<world>/npcs`, runs the
+server-side scripts (`created`, `timeout`, `playerenters`, PMs and
+`triggeraction`), and sends NPC changes, player changes, PMs and weapon grants
+back over the link.
+
+The link is specified in [PROTOCOL.md](PROTOCOL.md), the module map is in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and what is left is in
+[docs/NEXT.md](docs/NEXT.md). Contributors should read [AGENTS.md](AGENTS.md)
+for the project rules.
 
 ## Run
 
@@ -61,8 +66,10 @@ cargo build --release
 cargo test        # includes loopback tests against the stand-in gserver
 ```
 
-Releases for Linux, Windows and macOS are built by GitHub Actions on each `v*` tag.
-When a release happens, what the version numbers mean and what 1.0.0 needs: [VERSIONING.md](VERSIONING.md).
+Prebuilt Linux, Windows and macOS archives are on the
+[Releases page](https://github.com/squirelworks/seihai-npcserver/releases), built
+by GitHub Actions for each `v*` tag. [VERSIONING.md](VERSIONING.md) explains when
+a release is made, what the version numbers mean and what 1.0.0 needs.
 
 ## Licence
 
