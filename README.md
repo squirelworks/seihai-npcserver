@@ -27,6 +27,15 @@ The link is specified in [PROTOCOL.md](PROTOCOL.md), the module map is in
 [docs/NEXT.md](docs/NEXT.md). Contributors should read [AGENTS.md](AGENTS.md)
 for the project rules.
 
+## Getting started
+
+Download the archive for your system from the
+[Releases page](https://github.com/squirelworks/seihai-npcserver/releases), or
+build from source (see [Build](#build)). Put `seihai-npcserver` next to the
+`seihai-gserver` program, set `npcserver = auto` in the gserver's
+`config/server.txt`, and start the gserver as usual: it starts the NPC-server
+for you. Server-side NPC scripts go in the world's `npcs/` folder.
+
 ## Run
 
 Most people never start it by hand: with `npcserver = auto` in its config,
@@ -40,6 +49,14 @@ seihai-npcserver --gserver 127.0.0.1:14810 --token-file npcserver-token.txt --wo
 
 The token file holds the same token as `npcserver_token` in the gserver's
 config. The token is never taken on the command line.
+
+| Option | What it does |
+| --- | --- |
+| `--gserver HOST:PORT` | The gserver's NPC-server link (default `127.0.0.1:14810`) |
+| `--token-file FILE` | Read the link token (16 to 256 bytes) from `FILE`. Without it, the token comes from the `SEIHAI_NPCSERVER_TOKEN` environment variable, which is how `seihai-gserver` passes it with `npcserver = auto` |
+| `--world DIR` | The world folder; server-side NPCs are read from `DIR/npcs` |
+| `--once` | Exit when the link closes, instead of reconnecting |
+| `--help`, `--version` | Print the usage or the version |
 
 ## Sample world
 
@@ -61,10 +78,16 @@ cargo run -- --once
 
 ## Build
 
+Install Rust from [rustup.rs](https://rustup.rs/) the first time, then:
+
 ```
+git clone https://github.com/squirelworks/seihai-npcserver.git
+cd seihai-npcserver
 cargo build --release
 cargo test        # includes loopback tests against the stand-in gserver
 ```
+
+The program is then at `target/release/seihai-npcserver`.
 
 Prebuilt Linux, Windows and macOS archives are on the
 [Releases page](https://github.com/squirelworks/seihai-npcserver/releases), built
