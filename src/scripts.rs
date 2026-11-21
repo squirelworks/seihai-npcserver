@@ -142,8 +142,7 @@ impl Scripts {
                     &npc.level,
                 );
             }
-            world
-                .add(ObjSpec::npc(&npc.image, npc.x, npc.y, &npc.script).with_tag(npc.id as usize));
+            add_runtime_npc(world, npc);
         }
         self.apply_server_flags();
     }
@@ -508,9 +507,12 @@ impl Scripts {
             // request creates it concurrently. Only then remove the live name.
             std::fs::hard_link(path, &gone)
                 .map_err(|e| format!("{}: recovery {}: {e}", path.display(), gone.display()))?;
+            let archived = crate::attributes::archive(path)
+                .map_err(|e| format!("{}: attribute recovery: {e}", path.display()))?;
             std::fs::remove_file(path).map_err(|e| {
+                let restore = if archived { crate::attributes::restore(path) } else { Ok(()) };
                 format!(
-                    "{}: could not remove original; recovery kept at {}: {e}",
+                    "{}: could not remove original; recovery kept at {}: {e}; attribute restore: {restore:?}",
                     path.display(),
                     gone.display()
                 )
@@ -628,6 +630,15 @@ impl Scripts {
             let npcs = dir.join("npcs");
             std::fs::create_dir_all(&npcs).map_err(|e| format!("{}: {e}", npcs.display()))?;
             let path = npcs.join(format!("npc{name}.txt"));
+            if crate::attributes::path(&path)
+                .try_exists()
+                .map_err(|e| e.to_string())?
+            {
+                return Err(format!(
+                    "{}: orphan attribute sidecar requires recovery",
+                    path.display()
+                ));
+            }
             use std::io::Write;
             let mut f = std::fs::OpenOptions::new()
                 .write(true)
@@ -668,7 +679,7 @@ impl Scripts {
         w.core.walls = level_walls(self.world_dir.as_deref(), self.tiletypes.as_ref(), level);
         w.set_online(true, true);
         for n in &mine {
-            w.add(ObjSpec::npc(&n.image, n.x, n.y, &n.script).with_tag(n.id as usize));
+            add_runtime_npc(&mut w, n);
         }
         self.levels.insert(level.to_vec(), w);
         self.apply_server_flags();
@@ -738,6 +749,11 @@ impl Scripts {
                     .notes
                     .push(format!("script {}: {note}", show(level)));
             }
+            for message in &mapped.messages {
+                if let Err(e) = self.persist_attributes(message) {
+                    produced.notes.push(e);
+                }
+            }
             produced.messages.extend(mapped.messages);
         }
         if level == LEVELLESS {
@@ -782,6 +798,28 @@ impl Scripts {
         produced
     }
 
+    /// Store script attribute changes using the same synchronous file-write
+    /// convention as NC script and warp updates. Failed writes are reported;
+    /// they do not pretend the running script's change was rolled back.
+    fn persist_attributes(&mut self, message: &Message) -> Result<(), String> {
+        let Message::NpcProps { npc_id, props } = message else {
+            return Ok(());
+        };
+        let values = crate::attributes::values(props);
+        if values.is_empty() {
+            return Ok(());
+        }
+        let Some(n) = self.npcs.iter_mut().find(|n| n.id == *npc_id) else {
+            return Ok(());
+        };
+        n.props.extend(values);
+        if let Some(path) = &n.path {
+            crate::attributes::save(path, &n.props)
+                .map_err(|e| format!("{}: attributes: {e}", path.display()))?;
+        }
+        Ok(())
+    }
+
     /// A `server.` flag a script set or unset is seen by every level's
     /// scripts at once, not only after the gserver sends `SERVER_FLAGS`
     /// back: a gate on another level (or later in this tick) reads it
@@ -808,10 +846,23 @@ impl Scripts {
 
 /// `NPC_ADDED` for a database NPC.
 fn added(n: &NpcDef) -> Message {
+    let mut props = effects::place_props(&n.image, n.x, n.y);
+    props.extend(crate::attributes::props(&n.props));
     Message::NpcAdded {
         npc_id: n.id,
         level: n.level.clone(),
-        props: effects::place_props(&n.image, n.x, n.y),
+        props,
+    }
+}
+
+fn add_runtime_npc(world: &mut ScriptWorld, n: &NpcDef) {
+    let id = world.add(ObjSpec::npc(&n.image, n.x, n.y, &n.script).with_tag(n.id as usize));
+    if let Some(obj) = world.obj_mut(id) {
+        for (k, v) in &n.props {
+            if let Some(slot) = crate::attributes::number(k) {
+                obj.char_props.insert(format!("#P{slot}"), v.clone());
+            }
+        }
     }
 }
 
@@ -957,6 +1008,88 @@ mod tests {
 
     use super::*;
     use seihai_core::protocol::npcprops::parse_npc_props;
+
+    #[test]
+    fn script_attributes_persist_reload_and_replay_without_changing_other_state() {
+        let dir = std::env::temp_dir().join(format!("seihai-script-attrs-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("npcs")).unwrap();
+        let path = dir.join("npcs/npcbell.txt");
+        let script = "if (playerenters) { setcharprop #P1,red=blue; setcharprop #P30,; }";
+        let original = format!("GRNPC001\nNAME bell\nTYPE OBJECT\nSTARTLEVEL a.nw\nSTARTX 5\nSTARTY 6\nIMAGE bell.png\nATTR2 keep\nATTR30 old\nNPCSCRIPT\n{script}\nNPCSCRIPTEND\n");
+        std::fs::write(&path, &original).unwrap();
+        let mut s = Scripts::with_world(Era::V217, &dir);
+        s.open_database().unwrap();
+        s.start();
+        let p = Player {
+            level: b"a.nw".to_vec(),
+            ..Player::default()
+        };
+        let produced = s.on_player(1, &p, "playerenters");
+        assert!(produced.notes.is_empty(), "{:?}", produced.notes);
+        let frame = crate::link::encode_frame(&produced.messages).unwrap();
+        let decoded = crate::link::read_frame(&mut &frame[..]).unwrap();
+        let mut changed = BTreeMap::new();
+        for m in decoded {
+            if let Message::NpcProps { props, .. } = m {
+                let mut bytes = vec![0x20; 3];
+                bytes.extend(props);
+                for (i, value) in parse_npc_props(&bytes, false)
+                    .unwrap()
+                    .1
+                    .attrs
+                    .into_iter()
+                    .enumerate()
+                {
+                    if let Some(value) = value {
+                        changed.insert(i + 1, value);
+                    }
+                }
+            }
+        }
+        assert_eq!(changed.get(&1).map(String::as_str), Some("red=blue"));
+        assert_eq!(changed.get(&30).map(String::as_str), Some(""));
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(saved, original);
+        let (npcs, problems) = crate::npcdb::load(&dir).unwrap();
+        assert!(problems.is_empty());
+        let n = &npcs[0];
+        assert_eq!(n.props["ATTR1"], "red=blue");
+        assert_eq!(n.props["ATTR2"], "keep");
+        assert_eq!(n.props["ATTR30"], "");
+        assert_eq!(n.script, script);
+        assert_eq!(n.image, "bell.png");
+        assert_eq!((n.x, n.y), (5.0, 6.0));
+        let mut reloaded = Scripts::with_world(Era::V217, &dir);
+        reloaded.open_database().unwrap();
+        let announced = reloaded.start();
+        let raw = announced
+            .messages
+            .iter()
+            .find_map(|m| match m {
+                Message::NpcAdded { props, .. } => Some(props),
+                _ => None,
+            })
+            .unwrap();
+        let mut bytes = vec![0x20; 3];
+        bytes.extend(raw);
+        let attrs = parse_npc_props(&bytes, false).unwrap().1.attrs;
+        assert_eq!(attrs[0].as_deref(), Some("red=blue"));
+        assert_eq!(attrs[1].as_deref(), Some("keep"));
+        assert_eq!(attrs[29].as_deref(), Some(""));
+        let w = reloaded.levels.get(b"a.nw".as_slice()).unwrap();
+        assert_eq!(w.obj(w.ids()[0]).unwrap().char_props["#P1"], "red=blue");
+        reloaded.nc_delete(1).unwrap();
+        assert!(!path.exists());
+        assert!(!crate::attributes::path(&path).exists());
+        assert!(path.with_extension("txt.deleted.attrs").exists());
+        reloaded
+            .nc_add("bell", "OBJECT", "", b"a.nw", 10, 12)
+            .unwrap();
+        let (new, problems) = crate::npcdb::load(&dir).unwrap();
+        assert!(problems.is_empty());
+        assert!(!new[0].props.contains_key("ATTR1"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     fn npc(script: &str) -> NpcDef {
         NpcDef {

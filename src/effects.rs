@@ -584,7 +584,7 @@ fn pattr(code: &str) -> Option<u8> {
 }
 
 /// NPC gani-attribute prop id for `#P1` … `#P30`.
-fn gattrib_prop(n: u8) -> Option<u8> {
+pub(crate) fn gattrib_prop(n: u8) -> Option<u8> {
     match n {
         1..=5 => Some(NPCPROP_GATTRIB1 + (n - 1)),
         6..=9 => Some(NPCPROP_GATTRIB6 + (n - 6)),

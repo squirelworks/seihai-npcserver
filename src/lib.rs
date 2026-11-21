@@ -14,6 +14,7 @@
 //! - [`effects`]: turns script effects into link messages.
 //! - [`mock`]: a stand-in gserver for tests and loopback lab runs.
 
+mod attributes;
 pub mod effects;
 pub mod link;
 pub mod mock;

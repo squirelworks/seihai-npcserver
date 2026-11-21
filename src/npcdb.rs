@@ -245,6 +245,13 @@ pub fn load(world: &Path) -> io::Result<(Vec<NpcDef>, Vec<String>)> {
             .unwrap_or_default();
         match parse_file(i as u32 + 1, &stem, &text) {
             Ok(mut n) => {
+                match crate::attributes::load(path) {
+                    Ok(attrs) => n.props.extend(attrs),
+                    Err(e) => {
+                        problems.push(format!("{}: attributes: {e}", path.display()));
+                        continue;
+                    }
+                }
                 n.path = Some(path.clone());
                 parsed.push((path, n))
             }
