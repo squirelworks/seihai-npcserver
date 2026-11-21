@@ -1036,8 +1036,15 @@ mod tests {
             .iter()
             .any(|m| matches!(m, Message::NpcProps { .. })));
         assert_eq!(s.npcs[0].props["ATTR1"], "after");
+        let Message::NcText { text, .. } = s.nc_get(1, 1, crate::link::nc_get::ATTRIBUTES) else {
+            panic!("missing readback")
+        };
+        assert!(latin1(&text).contains("attr1=after\n"));
         assert_eq!(std::fs::read(crate::attributes::path(&path)).unwrap(), old);
         assert_eq!(crate::attributes::load(&path).unwrap()["ATTR1"], "before");
+        let (fresh, problems) = crate::npcdb::load(&dir).unwrap();
+        assert!(problems.is_empty());
+        assert_eq!(fresh[0].props["ATTR1"], "before");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
         std::fs::remove_dir_all(dir).unwrap();
     }
