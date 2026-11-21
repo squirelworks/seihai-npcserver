@@ -1010,6 +1010,39 @@ mod tests {
     use seihai_core::protocol::npcprops::parse_npc_props;
 
     #[test]
+    fn attribute_save_failure_reports_error_keeps_live_update_and_old_durable_value() {
+        let dir =
+            std::env::temp_dir().join(format!("seihai-attr-save-failure-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("npcs")).unwrap();
+        let path = dir.join("npcs/bell.txt");
+        let original = "LEVEL a.nw\nX 5\nY 6\nIMAGE bell.png\nSCRIPT\nif (playerenters) { setcharprop #P1,#a; }\nSCRIPTEND\n";
+        std::fs::write(&path, original).unwrap();
+        let mut s = Scripts::with_world(Era::V217, &dir);
+        s.open_database().unwrap();
+        s.start();
+        let mut p = Player {
+            account: b"before".to_vec(),
+            level: b"a.nw".to_vec(),
+            ..Player::default()
+        };
+        assert!(s.on_player(1, &p, "playerenters").notes.is_empty());
+        let old = std::fs::read(crate::attributes::path(&path)).unwrap();
+        std::fs::create_dir(path.with_extension("txt.attrs.new")).unwrap();
+        p.account = b"after".to_vec();
+        let failed = s.on_player(1, &p, "playerenters");
+        assert!(failed.notes.iter().any(|n| n.contains("attributes:")));
+        assert!(failed
+            .messages
+            .iter()
+            .any(|m| matches!(m, Message::NpcProps { .. })));
+        assert_eq!(s.npcs[0].props["ATTR1"], "after");
+        assert_eq!(std::fs::read(crate::attributes::path(&path)).unwrap(), old);
+        assert_eq!(crate::attributes::load(&path).unwrap()["ATTR1"], "before");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn script_attributes_persist_reload_and_replay_without_changing_other_state() {
         let dir = std::env::temp_dir().join(format!("seihai-script-attrs-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("npcs")).unwrap();
