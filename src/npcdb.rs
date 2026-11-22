@@ -325,8 +325,8 @@ pub fn with_script(text: &str, format: NpcFormat, script: &str) -> String {
 
 /// `text`, an NPC file in `format`, with its level and position set:
 /// `LEVEL`/`X`/`Y` in ours, `STARTLEVEL`/`STARTX`/`STARTY` in a
-/// `GRNPC001` file. Lines before the script block that name those keys
-/// are replaced; missing ones are added before the script (after the
+/// `GRNPC001` file. Lines outside script blocks that name those keys
+/// are replaced; missing ones are added before the first script (after the
 /// magic line of a `GRNPC001` file). Everything else stays as it was.
 pub fn with_position(text: &str, format: NpcFormat, level: &str, x: f64, y: f64) -> String {
     let (kl, kx, ky, open) = match format {
@@ -377,7 +377,8 @@ pub fn with_position(text: &str, format: NpcFormat, level: &str, x: f64, y: f64)
             out.push('\n');
             continue;
         }
-        if bare == open {
+        let key = bare.split_once(' ').map_or(bare, |(key, _)| key);
+        if key == open {
             if !missing_written {
                 write_missing(&mut out, &seen);
                 missing_written = true;
@@ -387,9 +388,8 @@ pub fn with_position(text: &str, format: NpcFormat, level: &str, x: f64, y: f64)
             out.push('\n');
             continue;
         }
-        let key = bare.split_whitespace().next().unwrap_or("");
         match wanted.iter().position(|(k, _)| *k == key) {
-            Some(i) if !missing_written => {
+            Some(i) => {
                 seen[i] = true;
                 out.push_str(&format!("{} {}\n", wanted[i].0, wanted[i].1));
             }
@@ -479,6 +479,43 @@ mod tests {
         assert_eq!(n.script, "new;\n NPCSCRIPTEND");
         assert_eq!(n.props.get("SHAPE").map(String::as_str), Some("32 48"));
         assert_eq!(n.kind(), Some("CONTROL"));
+    }
+
+    #[test]
+    fn position_updates_preserve_exact_and_valued_script_bodies() {
+        for (format, header, kl, kx, ky, open, close) in [
+            (
+                NpcFormat::Seihai,
+                "LEVEL a.nw\n",
+                "LEVEL",
+                "X",
+                "Y",
+                "SCRIPT",
+                "SCRIPTEND",
+            ),
+            (
+                NpcFormat::Grnpc,
+                "GRNPC001\nNAME Bell\n",
+                "STARTLEVEL",
+                "STARTX",
+                "STARTY",
+                "NPCSCRIPT",
+                "NPCSCRIPTEND",
+            ),
+        ] {
+            for suffix in ["", " ignored"] {
+                let body = format!("{open}{suffix}\n{kl} body.nw\n{kx} 99\n{ky} 98\n{close}\n");
+                let text = format!("{header}{body}{kl} old.nw\n{kx} 8\n{ky} 9\n");
+                let updated = with_position(&text, format, "moved.nw", 12.5, 7.5);
+                assert!(updated.contains(&body), "{updated}");
+                let parsed = parse_file(1, "bell", &updated).unwrap();
+                assert_eq!(
+                    (parsed.level.as_slice(), parsed.x, parsed.y),
+                    (b"moved.nw".as_slice(), 12.5, 7.5)
+                );
+                assert_eq!(parsed.script, format!("{kl} body.nw\n{kx} 99\n{ky} 98"));
+            }
+        }
     }
 
     #[test]
