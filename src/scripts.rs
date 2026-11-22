@@ -1393,6 +1393,118 @@ mod tests {
             .any(|t| t.contains("read me")));
     }
 
+    fn edit_last_script_block_survives_reload(grnpc: bool, valued_opener: bool) {
+        let dir = std::env::temp_dir().join(format!(
+            "seihai-last-script-{}-{grnpc}-{valued_opener}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(dir.join("npcs")).unwrap();
+        let path = dir.join("npcs/bell.txt");
+        let (header, open, close, between, tail) = if grnpc {
+            (
+                "GRNPC001\nNAME Bell\nTYPE LEVELNPC\nSTARTLEVEL start.nw\nSTARTX 5.00\nSTARTY 6.00\nIMAGE bell.png\n",
+                "NPCSCRIPT",
+                "NPCSCRIPTEND",
+                "NICK Keeper\n",
+                "SHAPE 32 48\n",
+            )
+        } else {
+            (
+                "LEVEL start.nw\nX 5\nY 6\nIMAGE bell.png\n",
+                "SCRIPT",
+                "SCRIPTEND",
+                "IMAGE bell.png\n",
+                "\n",
+            )
+        };
+        let earlier = format!("{open}\nif (created) {{ message earlier; }}\n{close}\n");
+        let last_open = if valued_opener {
+            format!("{open} ignored")
+        } else {
+            open.to_string()
+        };
+        let original = format!(
+            "{header}{earlier}{between}{last_open}\nif (created) {{ message effective; }}\n{close}\n{tail}"
+        );
+        std::fs::write(&path, &original).unwrap();
+        let (before, problems) = crate::npcdb::load(&dir).unwrap();
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(before.len(), 1);
+        assert_eq!(before[0].script, "if (created) { message effective; }");
+
+        let mut live = Scripts::with_world(Era::V217, &dir);
+        assert_eq!(live.open_database().unwrap(), (1, Vec::new()));
+        let initial = live.start();
+        assert!(initial
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|s| s.contains("effective")));
+        let replacement = "if (created) { message replacement; }";
+        let changed = live.nc_set_script(1, replacement).unwrap();
+        assert!(changed.notes.is_empty(), "{:?}", changed.notes);
+        assert!(changed
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|s| s.contains("replacement")));
+        let readback = Message::NcText {
+            request: 9,
+            found: true,
+            text: replacement.as_bytes().to_vec(),
+        };
+        assert_eq!(live.nc_get(9, 1, crate::link::nc_get::SCRIPT), readback);
+
+        let mut fresh = Scripts::with_world(Era::V217, &dir);
+        assert_eq!(fresh.open_database().unwrap(), (1, Vec::new()));
+        assert_eq!(fresh.nc_get(9, 1, crate::link::nc_get::SCRIPT), readback);
+        let replay = fresh.start();
+        assert!(replay
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|s| s.contains("replacement")));
+        assert!(!replay
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|s| s.contains("effective")));
+        let (after, problems) = crate::npcdb::load(&dir).unwrap();
+        assert!(problems.is_empty(), "{problems:?}");
+        let mut expected = before[0].clone();
+        expected.script = replacement.to_string();
+        assert_eq!(after, vec![expected]);
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.starts_with(header));
+        assert!(
+            saved.contains(&earlier),
+            "earlier block must stay unchanged: {saved}"
+        );
+        assert!(saved.contains(between));
+        assert!(saved.ends_with(tail));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn npc_control_edits_last_effective_seihai_script_block() {
+        edit_last_script_block_survives_reload(false, false);
+    }
+
+    #[test]
+    fn npc_control_edits_last_effective_grnpc_script_block() {
+        edit_last_script_block_survives_reload(true, false);
+    }
+
+    #[test]
+    fn npc_control_edits_last_valued_seihai_script_opener() {
+        edit_last_script_block_survives_reload(false, true);
+    }
+
+    #[test]
+    fn npc_control_edits_last_valued_grnpc_script_opener() {
+        edit_last_script_block_survives_reload(true, true);
+    }
+
     #[test]
     fn npc_control_reads_sets_and_deletes() {
         let dir = std::env::temp_dir().join(format!("seihai-nc-world-{}", std::process::id()));
