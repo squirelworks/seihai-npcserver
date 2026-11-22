@@ -1740,7 +1740,7 @@ mod tests {
             (b"tail.nw".as_slice(), 8.0, 9.0)
         );
 
-        let assert_place = |messages: &[Message], level: &[u8], x: f64, y: f64| {
+        let assert_place = |messages: &[Message], level: &[u8], x: f32, y: f32| {
             let props = messages
                 .iter()
                 .find_map(|m| match m {
