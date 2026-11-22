@@ -21,4 +21,38 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
+      # Temporary bootstrap: generate data on CI rather than install/build tools
+      # on the development host. Removed once the reviewed corpus/lock is checked in.
+      - name: Bootstrap fuzz corpus and lock
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cargo run --locked --example fuzz_corpus -- fuzz/corpus
+          cp Cargo.lock fuzz/Cargo.lock
+          cargo update --manifest-path fuzz/Cargo.toml --workspace
+          python3 .github/scripts/export-fuzz-bootstrap.py
+      - name: Generate deterministic corpus for Windows bootstrap
+        if: runner.os == 'Windows'
+        run: cargo run --locked --example fuzz_corpus -- fuzz/corpus
       - run: cargo test
+      - uses: dtolnay/rust-toolchain@nightly
+        if: runner.os == 'Linux'
+      - name: Install cargo-fuzz
+        if: runner.os == 'Linux'
+        run: cargo install cargo-fuzz --version 0.12.0 --locked
+      - name: Bounded production decoder fuzz smoke
+        if: runner.os == 'Linux'
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          cp -R fuzz/corpus "$RUNNER_TEMP/npc-fuzz-corpus"
+          for target in link_frames link_body; do
+            cargo +nightly fuzz run "$target" "$RUNNER_TEMP/npc-fuzz-corpus/$target" -- -seed=6113 -runs=20000 -max_total_time=30 -timeout=5 -max_len=131072 -rss_limit_mb=2048 -malloc_limit_mb=512
+          done
+      - uses: actions/upload-artifact@v4
+        if: failure() && runner.os == 'Linux'
+        with:
+          name: npc-link-fuzz-reproductions
+          path: fuzz/artifacts
+          if-no-files-found: ignore
+          retention-days: 7

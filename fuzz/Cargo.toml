@@ -1,0 +1,30 @@
+[package]
+name = "seihai-npcserver-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+seihai-npcserver = { path = ".." }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "link_frames"
+path = "fuzz_targets/link_frames.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "link_body"
+path = "fuzz_targets/link_body.rs"
+test = false
+doc = false
+bench = false
