@@ -14,6 +14,7 @@ jobs:
         # Sequoia VM in the lab (see AGENTS.md, "macOS builds").
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -25,11 +26,13 @@ jobs:
       # on the development host. Removed once the reviewed corpus/lock is checked in.
       - name: Bootstrap fuzz corpus and lock
         if: runner.os == 'Linux'
+        timeout-minutes: 5
         shell: bash
         run: |
           cargo run --locked --example fuzz_corpus -- fuzz/corpus
           cp Cargo.lock fuzz/Cargo.lock
           cargo update --manifest-path fuzz/Cargo.toml --workspace
+          git diff --exit-code -- Cargo.lock
           python3 .github/scripts/export-fuzz-bootstrap.py
       - name: Generate deterministic corpus for Windows bootstrap
         if: runner.os == 'Windows'
@@ -39,6 +42,7 @@ jobs:
         if: runner.os == 'Linux'
       - name: Install cargo-fuzz
         if: runner.os == 'Linux'
+        timeout-minutes: 5
         run: cargo install cargo-fuzz --version 0.12.0 --locked
       - name: Bounded production decoder fuzz smoke
         if: runner.os == 'Linux'
