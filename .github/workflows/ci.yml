@@ -14,6 +14,7 @@ jobs:
         # Sequoia VM in the lab (see AGENTS.md, "macOS builds").
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -22,3 +23,27 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      - uses: dtolnay/rust-toolchain@nightly
+        if: runner.os == 'Linux'
+      # Install with stable: cargo-fuzz's own deps must build on the default
+      # toolchain after nightly is installed, and older locked rustix fails there.
+      - name: Install cargo-fuzz
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: cargo +stable install cargo-fuzz --version 0.13.2 --locked
+      - name: Bounded production decoder fuzz smoke
+        if: runner.os == 'Linux'
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          cp -R fuzz/corpus "$RUNNER_TEMP/npc-fuzz-corpus"
+          for target in link_frames link_body; do
+            cargo +nightly fuzz run "$target" "$RUNNER_TEMP/npc-fuzz-corpus/$target" -- -seed=6113 -runs=20000 -max_total_time=30 -timeout=5 -max_len=131072 -rss_limit_mb=2048 -malloc_limit_mb=512
+          done
+      - uses: actions/upload-artifact@v4
+        if: failure() && runner.os == 'Linux'
+        with:
+          name: npc-link-fuzz-reproductions
+          path: fuzz/artifacts
+          if-no-files-found: ignore
+          retention-days: 7
