@@ -290,7 +290,9 @@ pub fn with_script(text: &str, format: NpcFormat, script: &str) -> String {
     let mut source = text.lines().enumerate();
     let mut effective = None;
     while let Some((index, line)) = source.next() {
-        if line.trim_end_matches('\r') == open {
+        let line = line.trim_end_matches('\r');
+        let key = line.split_once(' ').map_or(line, |(key, _)| key);
+        if key == open {
             effective = Some(index);
             // An opening marker inside a script is body text, not a new block.
             for (_, body) in source.by_ref() {
@@ -490,11 +492,13 @@ mod tests {
                 "NPCSCRIPTEND",
             ),
         ] {
-            let earlier = format!("{open}\nearlier;\n{open}\n{close}\n");
-            let text = format!("{header}{earlier}{open}\nold;\n{open}\n{close}\n");
-            let updated = with_script(&text, format, "new;");
-            assert!(updated.starts_with(&format!("{header}{earlier}")));
-            assert_eq!(parse_file(1, "test", &updated).unwrap().script, "new;");
+            for opener in [open.to_string(), format!("{open} ignored")] {
+                let earlier = format!("{open}\nearlier;\n{open}\n{close}\n");
+                let text = format!("{header}{earlier}{opener}\nold;\n{open}\n{close}\n");
+                let updated = with_script(&text, format, "new;");
+                assert!(updated.starts_with(&format!("{header}{earlier}")));
+                assert_eq!(parse_file(1, "test", &updated).unwrap().script, "new;");
+            }
         }
     }
 
