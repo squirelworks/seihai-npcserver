@@ -2,6 +2,7 @@ Notes for the next seihai-npcserver release. One line per user-visible change, a
 
 - Add bounded fuzz targets for the production NPC link frame and message-body decoders, with constructor-based corpus controls and fragmented-read/cursor regression tests.
 
+- Add ordinary NC script-set and warp write-failure, retry and reload tests for both NPC file formats, including preservation of the running script timer after refusal.
 - NC warps now update position fields after script blocks as well as before them, so accepted NPC files retain the live location on reload. Exact and valued script openers keep their bodies unchanged.
 
 - Script `setcharprop #P1` through `#P30` changes now save GANI attributes in a typed `.txt.attrs` sidecar and restore them into the runtime, NC readback and `NPC_ADDED` replay. NPC source files stay unchanged. This is partial #49; native NC attribute editing remains open.
