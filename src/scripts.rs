@@ -1710,6 +1710,94 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    fn warp_with_trailing_position_survives_reload(grnpc: bool) {
+        let dir =
+            std::env::temp_dir().join(format!("seihai-warp-tail-{}-{grnpc}", std::process::id()));
+        std::fs::create_dir_all(dir.join("npcs")).unwrap();
+        let path = dir.join("npcs/bell.txt");
+        let (header, open, close, tail) = if grnpc {
+            (
+                "GRNPC001\nNAME Bell\nTYPE LEVELNPC\nSTARTLEVEL header.nw\nSTARTX 2.00\nSTARTY 3.00\nIMAGE bell.png\n",
+                "NPCSCRIPT",
+                "NPCSCRIPTEND",
+                "STARTLEVEL tail.nw\nSTARTX 8.00\nSTARTY 9.00\nSHAPE 32 48\n",
+            )
+        } else {
+            (
+                "LEVEL header.nw\nX 2\nY 3\nIMAGE bell.png\n",
+                "SCRIPT",
+                "SCRIPTEND",
+                "LEVEL tail.nw\nX 8\nY 9\n",
+            )
+        };
+        let script = format!("{open}\nif (created) {{ message warp; }}\n{close}\n");
+        std::fs::write(&path, format!("{header}{script}{tail}")).unwrap();
+        let (before, problems) = crate::npcdb::load(&dir).unwrap();
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(before.len(), 1);
+        assert_eq!(
+            (before[0].level.as_slice(), before[0].x, before[0].y),
+            (b"tail.nw".as_slice(), 8.0, 9.0)
+        );
+
+        let assert_place = |messages: &[Message], level: &[u8], x: f64, y: f64| {
+            let props = messages
+                .iter()
+                .find_map(|m| match m {
+                    Message::NpcAdded {
+                        npc_id: 1,
+                        level: actual,
+                        props,
+                    } if actual == level => Some(props),
+                    _ => None,
+                })
+                .expect("production NPC_ADDED at the expected level");
+            let mut raw = vec![0x20, 0x20, 0x21];
+            raw.extend_from_slice(props);
+            let (id, parsed) = parse_npc_props(&raw, false).unwrap();
+            assert_eq!(id, 1);
+            assert_eq!((parsed.x, parsed.y), (Some(x), Some(y)));
+            assert_eq!(parsed.image.as_deref(), Some("bell.png"));
+        };
+        let mut live = Scripts::with_world(Era::V217, &dir);
+        assert_eq!(live.open_database().unwrap(), (1, Vec::new()));
+        assert_place(&live.start().messages, b"tail.nw", 8.0, 9.0);
+        let warped = live.nc_warp(1, b"moved.nw", 25, 15).unwrap();
+        assert_place(&warped.messages, b"moved.nw", 12.5, 7.5);
+        assert!(warped
+            .messages
+            .iter()
+            .any(|m| matches!(m, Message::NpcDeleted { npc_id: 1 })));
+        let readback = live.nc_get(9, 1, crate::link::nc_get::ATTRIBUTES);
+
+        let mut fresh = Scripts::with_world(Era::V217, &dir);
+        assert_eq!(fresh.open_database().unwrap(), (1, Vec::new()));
+        assert_eq!(
+            fresh.nc_get(9, 1, crate::link::nc_get::ATTRIBUTES),
+            readback
+        );
+        assert_place(&fresh.start().messages, b"moved.nw", 12.5, 7.5);
+        let (after, problems) = crate::npcdb::load(&dir).unwrap();
+        assert!(problems.is_empty(), "{problems:?}");
+        let mut expected = before[0].clone();
+        expected.level = b"moved.nw".to_vec();
+        expected.x = 12.5;
+        expected.y = 7.5;
+        assert_eq!(after, vec![expected]);
+        assert!(std::fs::read_to_string(&path).unwrap().contains(&script));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn npc_control_warp_survives_trailing_seihai_position_keys() {
+        warp_with_trailing_position_survives_reload(false);
+    }
+
+    #[test]
+    fn npc_control_warp_survives_trailing_grnpc_position_keys() {
+        warp_with_trailing_position_survives_reload(true);
+    }
+
     #[test]
     fn npc_control_adds_an_npc() {
         let (dir, mut s) = delete_world("add");
