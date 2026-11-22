@@ -4,4 +4,4 @@ Notes for the next seihai-npcserver release. One line per user-visible change, a
 
 - Built on seihai-core v0.7.2 (was v0.6.3): NewWorld beta 1/2 as real versions (with their 8-byte COLORS, which v0.7.0 had as 7), the version-token/profile audit, GS2 reading non-numeric text as -1, and the PLO_FILE mod time for 2.05 and the NewWorld betas (v0.7.2).
 
-- Added production NC script edit/save/reload regressions for accepted NPC files with repeated script blocks; baseline execution pending, no runtime change yet.
+- NC script edits now replace the last effective script block in accepted NPC files, matching both parsers. Earlier blocks and unrelated fields are preserved, so the live edit survives a fresh load.

@@ -279,31 +279,43 @@ pub fn load(world: &Path) -> io::Result<(Vec<NpcDef>, Vec<String>)> {
 }
 
 /// `text`, an NPC file in `format`, with its script replaced by
-/// `script`. Every other line stays as it was. A file with no script block
-/// gets one at the end.
+/// `script`. The parsers use the last script block, so that is the block
+/// replaced; earlier blocks and other lines stay as they were. A file with
+/// no script block gets one at the end.
 pub fn with_script(text: &str, format: NpcFormat, script: &str) -> String {
     let (open, close) = match format {
         NpcFormat::Seihai => ("SCRIPT", "SCRIPTEND"),
         NpcFormat::Grnpc => ("NPCSCRIPT", "NPCSCRIPTEND"),
     };
+    let mut source = text.lines().enumerate();
+    let mut effective = None;
+    while let Some((index, line)) = source.next() {
+        if line.trim_end_matches('\r') == open {
+            effective = Some(index);
+            // An opening marker inside a script is body text, not a new block.
+            for (_, body) in source.by_ref() {
+                if body.trim_end_matches('\r') == close {
+                    break;
+                }
+            }
+        }
+    }
     let mut out = String::new();
-    let mut lines = text.lines();
-    let mut done = false;
-    while let Some(line) = lines.next() {
-        if !done && line.trim_end_matches('\r') == open {
-            for l in lines.by_ref() {
+    let mut lines = text.lines().enumerate();
+    while let Some((index, line)) = lines.next() {
+        if Some(index) == effective {
+            for (_, l) in lines.by_ref() {
                 if l.trim_end_matches('\r') == close {
                     break;
                 }
             }
             push_block(&mut out, open, close, script);
-            done = true;
         } else {
             out.push_str(line);
             out.push('\n');
         }
     }
-    if !done {
+    if effective.is_none() {
         push_block(&mut out, open, close, script);
     }
     out
@@ -465,6 +477,25 @@ mod tests {
         assert_eq!(n.script, "new;\n NPCSCRIPTEND");
         assert_eq!(n.props.get("SHAPE").map(String::as_str), Some("32 48"));
         assert_eq!(n.kind(), Some("CONTROL"));
+    }
+
+    #[test]
+    fn script_markers_inside_bodies_do_not_select_a_block() {
+        for (format, header, open, close) in [
+            (NpcFormat::Seihai, "LEVEL a.nw\n", "SCRIPT", "SCRIPTEND"),
+            (
+                NpcFormat::Grnpc,
+                "GRNPC001\nSTARTLEVEL a.nw\n",
+                "NPCSCRIPT",
+                "NPCSCRIPTEND",
+            ),
+        ] {
+            let earlier = format!("{open}\nearlier;\n{open}\n{close}\n");
+            let text = format!("{header}{earlier}{open}\nold;\n{open}\n{close}\n");
+            let updated = with_script(&text, format, "new;");
+            assert!(updated.starts_with(&format!("{header}{earlier}")));
+            assert_eq!(parse_file(1, "test", &updated).unwrap().script, "new;");
+        }
     }
 
     #[test]
