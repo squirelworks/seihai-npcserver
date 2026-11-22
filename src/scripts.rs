@@ -1710,9 +1710,11 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    fn warp_with_trailing_position_survives_reload(grnpc: bool) {
-        let dir =
-            std::env::temp_dir().join(format!("seihai-warp-tail-{}-{grnpc}", std::process::id()));
+    fn warp_with_trailing_position_survives_reload(grnpc: bool, valued_opener: bool) {
+        let dir = std::env::temp_dir().join(format!(
+            "seihai-warp-tail-{}-{grnpc}-{valued_opener}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(dir.join("npcs")).unwrap();
         let path = dir.join("npcs/bell.txt");
         let (header, open, close, tail) = if grnpc {
@@ -1730,7 +1732,8 @@ mod tests {
                 "LEVEL tail.nw\nX 8\nY 9\n",
             )
         };
-        let script = format!("{open}\nif (created) {{ message warp; }}\n{close}\n");
+        let suffix = if valued_opener { " ignored" } else { "" };
+        let script = format!("{open}{suffix}\nif (created) {{ message warp; }}\n{close}\n");
         std::fs::write(&path, format!("{header}{script}{tail}")).unwrap();
         let (before, problems) = crate::npcdb::load(&dir).unwrap();
         assert!(problems.is_empty(), "{problems:?}");
@@ -1790,12 +1793,22 @@ mod tests {
 
     #[test]
     fn npc_control_warp_survives_trailing_seihai_position_keys() {
-        warp_with_trailing_position_survives_reload(false);
+        warp_with_trailing_position_survives_reload(false, false);
     }
 
     #[test]
     fn npc_control_warp_survives_trailing_grnpc_position_keys() {
-        warp_with_trailing_position_survives_reload(true);
+        warp_with_trailing_position_survives_reload(true, false);
+    }
+
+    #[test]
+    fn npc_control_warp_preserves_valued_seihai_script_block() {
+        warp_with_trailing_position_survives_reload(false, true);
+    }
+
+    #[test]
+    fn npc_control_warp_preserves_valued_grnpc_script_block() {
+        warp_with_trailing_position_survives_reload(true, true);
     }
 
     #[test]
