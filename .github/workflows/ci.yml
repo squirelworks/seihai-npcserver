@@ -22,28 +22,15 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
-      # Temporary bootstrap: generate data on CI rather than install/build tools
-      # on the development host. Removed once the reviewed corpus/lock is checked in.
-      - name: Bootstrap fuzz corpus and lock
-        if: runner.os == 'Linux'
-        timeout-minutes: 5
-        shell: bash
-        run: |
-          cargo run --locked --example fuzz_corpus -- fuzz/corpus
-          cp Cargo.lock fuzz/Cargo.lock
-          cargo update --manifest-path fuzz/Cargo.toml --workspace
-          git diff --exit-code -- Cargo.lock
-          python3 .github/scripts/export-fuzz-bootstrap.py
-      - name: Generate deterministic corpus for Windows bootstrap
-        if: runner.os == 'Windows'
-        run: cargo run --locked --example fuzz_corpus -- fuzz/corpus
       - run: cargo test
       - uses: dtolnay/rust-toolchain@nightly
         if: runner.os == 'Linux'
+      # Install with stable: cargo-fuzz's own deps must build on the default
+      # toolchain after nightly is installed, and older locked rustix fails there.
       - name: Install cargo-fuzz
         if: runner.os == 'Linux'
         timeout-minutes: 5
-        run: cargo install cargo-fuzz --version 0.12.0 --locked
+        run: cargo +stable install cargo-fuzz --version 0.13.2 --locked
       - name: Bounded production decoder fuzz smoke
         if: runner.os == 'Linux'
         timeout-minutes: 8
