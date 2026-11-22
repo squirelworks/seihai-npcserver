@@ -2127,4 +2127,178 @@ mod tests {
         let (_, p) = parse_npc_props(&raw, false)?;
         Some((p.image?, p.gani?))
     }
+
+    fn ordinary_nc_write_failure(grnpc: bool, set_script: bool) {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "seihai-nc-write-failure-{}-{stamp}-{grnpc}-{set_script}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(dir.join("npcs")).unwrap();
+        let path = dir.join("npcs/bell.txt");
+        let original_script =
+            "if (created) { message ready; timeout = 0.1; } if (timeout) { message elapsed; }";
+        let original = if grnpc {
+            format!("GRNPC001\nNAME Bell\nTYPE LEVELNPC\nSTARTLEVEL start.nw\nSTARTX 5\nSTARTY 6\nIMAGE bell.png\nNPCSCRIPT\n{original_script}\nNPCSCRIPTEND\n")
+        } else {
+            format!(
+                "LEVEL start.nw\nX 5\nY 6\nIMAGE bell.png\nSCRIPT\n{original_script}\nSCRIPTEND\n"
+            )
+        };
+        std::fs::write(&path, &original).unwrap();
+        let (before, problems) = crate::npcdb::load(&dir).unwrap();
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(before.len(), 1);
+
+        // Positive production timer control for the later no-restart assertion.
+        let mut control = Scripts::new(Era::V217);
+        control.load(&before);
+        control.start();
+        assert!(!control
+            .tick(50)
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|m| m == "elapsed"));
+        assert!(control
+            .tick(60)
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|m| m == "elapsed"));
+        drop(control);
+
+        let mut live = Scripts::with_world(Era::V217, &dir);
+        assert_eq!(live.open_database().unwrap(), (1, Vec::new()));
+        let started = live.start();
+        assert!(started.messages.iter().any(
+            |m| matches!(m, Message::NpcAdded { npc_id: 1, level, .. } if level == b"start.nw")
+        ));
+        assert!(started
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|m| m == "ready"));
+        let defs = live.npcs.clone();
+        let list = live.nc_list();
+        let script = live.nc_get(1, 1, crate::link::nc_get::SCRIPT);
+        let attrs = live.nc_get(2, 1, crate::link::nc_get::ATTRIBUTES);
+        let levels = live.levels().map(Vec::from).collect::<Vec<_>>();
+        assert!(!live
+            .tick(50)
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|m| m == "elapsed"));
+
+        let obstruction = path.with_extension("txt.new");
+        std::fs::create_dir(&obstruction).unwrap();
+        let replacement = "if (created) { message replacement; }";
+        let error = if set_script {
+            live.nc_set_script(1, replacement).unwrap_err()
+        } else {
+            live.nc_warp(1, b"moved.nw", 25, 15).unwrap_err()
+        };
+        assert!(error.contains("bell.txt"), "{error}");
+        assert!(obstruction.is_dir());
+        assert_eq!(std::fs::read(&path).unwrap(), original.as_bytes());
+        assert_eq!(live.npcs, defs);
+        assert_eq!(live.nc_list(), list);
+        assert_eq!(live.nc_get(1, 1, crate::link::nc_get::SCRIPT), script);
+        assert_eq!(live.nc_get(2, 1, crate::link::nc_get::ATTRIBUTES), attrs);
+        assert_eq!(live.levels().map(Vec::from).collect::<Vec<_>>(), levels);
+        let still_running = live.tick(60);
+        assert!(still_running
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|m| m == "elapsed"));
+        assert!(still_running
+            .messages
+            .iter()
+            .all(|m| !matches!(m, Message::NpcAdded { .. } | Message::NpcDeleted { .. })));
+
+        std::fs::remove_dir(&obstruction).unwrap();
+        let changed = if set_script {
+            live.nc_set_script(1, replacement).unwrap()
+        } else {
+            live.nc_warp(1, b"moved.nw", 25, 15).unwrap()
+        };
+        assert!(changed.notes.is_empty(), "{:?}", changed.notes);
+        assert!(changed
+            .messages
+            .iter()
+            .any(|m| matches!(m, Message::NpcDeleted { npc_id: 1 })));
+        let target = if set_script {
+            b"start.nw".as_slice()
+        } else {
+            b"moved.nw".as_slice()
+        };
+        assert!(changed
+            .messages
+            .iter()
+            .any(|m| matches!(m, Message::NpcAdded { npc_id: 1, level, .. } if level == target)));
+        let expected_message = if set_script { "replacement" } else { "ready" };
+        assert!(changed
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|m| m == expected_message));
+        assert!(!obstruction.exists());
+        assert_ne!(std::fs::read(&path).unwrap(), original.as_bytes());
+        let saved_script = live.nc_get(1, 1, crate::link::nc_get::SCRIPT);
+        let saved_attrs = live.nc_get(2, 1, crate::link::nc_get::ATTRIBUTES);
+        let mut expected = before[0].clone();
+        if set_script {
+            expected.script = replacement.into();
+        } else {
+            expected.level = b"moved.nw".to_vec();
+            expected.x = 12.5;
+            expected.y = 7.5;
+        }
+        let (saved, problems) = crate::npcdb::load(&dir).unwrap();
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(saved, vec![expected]);
+        drop(live);
+
+        let mut fresh = Scripts::with_world(Era::V217, &dir);
+        assert_eq!(fresh.open_database().unwrap(), (1, Vec::new()));
+        assert_eq!(
+            fresh.nc_get(1, 1, crate::link::nc_get::SCRIPT),
+            saved_script
+        );
+        assert_eq!(
+            fresh.nc_get(2, 1, crate::link::nc_get::ATTRIBUTES),
+            saved_attrs
+        );
+        let replay = fresh.start();
+        assert!(replay
+            .messages
+            .iter()
+            .any(|m| matches!(m, Message::NpcAdded { npc_id: 1, level, .. } if level == target)));
+        assert!(replay
+            .messages
+            .iter()
+            .filter_map(message_of)
+            .any(|m| m == expected_message));
+        drop(fresh);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn npc_control_script_write_failure_preserves_live_state_and_allows_retry_reload() {
+        for grnpc in [false, true] {
+            ordinary_nc_write_failure(grnpc, true);
+        }
+    }
+
+    #[test]
+    fn npc_control_warp_write_failure_preserves_live_state_and_allows_retry_reload() {
+        for grnpc in [false, true] {
+            ordinary_nc_write_failure(grnpc, false);
+        }
+    }
 }
